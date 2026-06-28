@@ -1,0 +1,166 @@
+.main {
+  min-height: calc(100vh - 64px);
+  padding: 40px 24px 60px;
+  background: #f8fafc;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.pageTitle {
+  font-size: 32px;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0 0 8px;
+}
+
+.pageSubtitle {
+  font-size: 16px;
+  color: #64748b;
+  margin: 0;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px;
+  color: #64748b;
+}
+
+.empty {
+  text-align: center;
+  padding: 80px 40px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.emptyEmoji {
+  font-size: 64px;
+  margin: 0 0 16px;
+}
+
+.empty h2 {
+  font-size: 24px;
+  color: #1e293b;
+  margin: 0 0 8px;
+}
+
+.empty p {
+  color: #64748b;
+  margin: 0 0 24px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.cardImage {
+  height: 200px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.statusBadge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+}
+
+.statusDraft {
+  background: rgba(148, 163, 184, 0.8);
+  color: white;
+}
+
+.statusGenerating {
+  background: rgba(245, 158, 11, 0.8);
+  color: white;
+}
+
+.statusCompleted {
+  background: rgba(34, 197, 94, 0.8);
+  color: white;
+}
+
+.statusFailed {
+  background: rgba(239, 68, 68, 0.8);
+  color: white;
+}
+
+.cardContent {
+  padding: 20px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardMeta {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+
+.cardDate {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 16px;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header a {
+    width: 100%;
+  }
+
+  .header a button {
+    width: 100%;
+  }
+}
