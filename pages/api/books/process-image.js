@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, COVER_IMAGE_PROMPT, generateImage } from '../../../lib/openai'
+import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt } from '../../../lib/openai'
 import { uploadImageToStorage } from '../../../lib/storage'
 
 // 이미지 1장만 생성하므로 단일 요청은 ~50-60초. 함수 한도 안에서 안전하게 끝난다.
@@ -46,12 +46,15 @@ export default async function handler(req, res) {
 
     const openai = createOpenAI()
     const pages = book.content?.pages || []
+    // 모든 삽화에 공통 적용할 화풍 + 등장인물 외형 (텍스트 생성 시 만들어 저장됨)
+    const styleGuide = book.content?.style_guide || ''
 
     // 1) 표지가 아직 없으면 표지부터 생성
     if (!book.cover_image_url) {
-      const coverPrompt = COVER_IMAGE_PROMPT
+      const coverScene = COVER_IMAGE_PROMPT
         .replace('{title}', book.title)
         .replace('{category}', book.category || '일반')
+      const coverPrompt = buildImagePrompt(styleGuide, coverScene)
       try {
         const b64 = await generateImage(openai, coverPrompt, { size: '1024x1024', quality: 'low' })
         const url = await uploadImageToStorage(supabase, book.id, 'cover', b64)
@@ -83,7 +86,8 @@ export default async function handler(req, res) {
       todo.map(async (idx) => {
         const page = pages[idx]
         try {
-          const b64 = await generateImage(openai, page.image_prompt, { size: '1024x1024', quality: 'low' })
+          const prompt = buildImagePrompt(styleGuide, page.image_prompt)
+          const b64 = await generateImage(openai, prompt, { size: '1024x1024', quality: 'low' })
           const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
           pages[idx] = { ...page, image_url: url }
         } catch (e) {
@@ -100,7 +104,7 @@ export default async function handler(req, res) {
     await supabase
       .from('books')
       .update({
-        content: { pages },
+        content: { style_guide: styleGuide, pages },
         ...(allDone ? { status: 'completed' } : {}),
       })
       .eq('id', book.id)

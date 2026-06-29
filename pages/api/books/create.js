@@ -87,13 +87,18 @@ export default async function handler(req, res) {
 
     const storyContent = JSON.parse(textResponse.choices[0].message.content)
     const pages = storyContent.pages || []
+    const styleGuide = storyContent.style_guide || ''
     console.log('Story generated:', pages.length, 'pages')
 
     // 6. 텍스트(이미지 없는 페이지)를 먼저 저장 — 뷰어에서 글은 바로 읽을 수 있도록
+    //    style_guide도 함께 저장해 모든 삽화가 같은 화풍·등장인물로 그려지게 한다.
     await supabase
       .from('books')
       .update({
-        content: { pages: pages.map((p) => ({ ...p, image_url: null })) },
+        content: {
+          style_guide: styleGuide,
+          pages: pages.map((p) => ({ ...p, image_url: null })),
+        },
       })
       .eq('id', book.id)
 
