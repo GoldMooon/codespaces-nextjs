@@ -21,21 +21,23 @@ export default async function handler(req, res) {
     }
 
     const { priceId, productType } = req.body
+    // priceId는 Polar 제품 ID(UUID)로 사용
+    const productId = priceId
 
-    if (!priceId) {
-      return res.status(400).json({ error: 'Price ID is required' })
+    if (!productId) {
+      return res.status(400).json({ error: 'Product ID is required' })
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
     // Create Polar checkout session
     const session = await createCheckoutSession({
-      priceId,
-      successUrl: `${appUrl}/payment/success`,
-      cancelUrl: `${appUrl}/pricing`,
+      productId,
+      successUrl: `${appUrl}/payment/success?checkout_id={CHECKOUT_ID}`,
+      customerEmail: user.email,
       metadata: {
         userId: user.id,
-        productType,
+        productType: productType || '',
       },
     })
 
