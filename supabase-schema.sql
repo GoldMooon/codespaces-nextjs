@@ -131,10 +131,17 @@ CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON subscriptions
 -- 프로필 자동 생성 트리거 (회원가입 시)
 -- ===========================================
 
+-- 주의: SET search_path = public 필수.
+-- GoTrue(Auth 서비스)가 트리거를 실행할 때 search_path에 public이 없어
+-- profiles 테이블을 찾지 못하면 회원가입이 "Database error" 500으로 실패한다.
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO profiles (id, email, full_name, avatar_url)
+  INSERT INTO public.profiles (id, email, full_name, avatar_url)
   VALUES (
     NEW.id,
     NEW.email,
@@ -143,7 +150,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
