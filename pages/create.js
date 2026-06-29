@@ -106,10 +106,9 @@ export default function CreatePage() {
       setCurrentStep('complete')
       setCreatedBook(data.book)
 
-      // Redirect to book viewer after short delay
-      setTimeout(() => {
-        router.push(`/book/${data.book.id}`)
-      }, 2000)
+      // 텍스트 생성 완료 — 이미지는 백그라운드에서 계속 생성된다.
+      // 책 페이지로 이동하면 거기서 완료까지 자동 폴링한다.
+      router.push(`/book/${data.book.id}`)
 
     } catch (err) {
       console.error('Error:', err)

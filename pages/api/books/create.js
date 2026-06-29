@@ -1,5 +1,11 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, COVER_IMAGE_PROMPT, generateImage } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT } from '../../../lib/openai'
+
+// 텍스트 생성만 동기 처리(~5초)하고 이미지는 별도 엔드포인트(process-image)가
+// 1장씩 처리하므로 이 함수는 짧게 끝난다.
+export const config = {
+  maxDuration: 60,
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -80,68 +86,18 @@ export default async function handler(req, res) {
     })
 
     const storyContent = JSON.parse(textResponse.choices[0].message.content)
-    console.log('Story generated:', storyContent.pages?.length, 'pages')
-
-    // 6. 표지 이미지 생성 (gpt-image-2) 및 Storage 업로드
-    const coverPrompt = COVER_IMAGE_PROMPT
-      .replace('{title}', title)
-      .replace('{category}', category || '일반')
-
-    let coverImageUrl = null
-    try {
-      const coverBase64 = await generateImage(openai, coverPrompt, {
-        size: '1024x1024',
-        quality: 'medium',
-      })
-      coverImageUrl = await uploadImageToStorage(supabase, book.id, 'cover', coverBase64)
-      console.log('Cover image uploaded:', coverImageUrl)
-    } catch (error) {
-      console.error('Cover image generation failed:', error)
-    }
-
-    // 7. 각 페이지 이미지 생성 (gpt-image-2)
     const pages = storyContent.pages || []
-    const pagesWithImages = []
+    console.log('Story generated:', pages.length, 'pages')
 
-    for (const page of pages) {
-      try {
-        const pageBase64 = await generateImage(openai, page.image_prompt, {
-          size: '1024x1024',
-          quality: 'medium',
-        })
-        const imageUrl = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, pageBase64)
-
-        pagesWithImages.push({
-          ...page,
-          image_url: imageUrl,
-        })
-        console.log(`Page ${page.page} image generated`)
-      } catch (error) {
-        console.error('Failed to generate image for page', page.page, error)
-        pagesWithImages.push({
-          ...page,
-          image_url: null,
-        })
-      }
-    }
-
-    console.log('All page images generated')
-
-    // 8. 데이터 업데이트
-    const { error: updateError } = await supabase
+    // 6. 텍스트(이미지 없는 페이지)를 먼저 저장 — 뷰어에서 글은 바로 읽을 수 있도록
+    await supabase
       .from('books')
       .update({
-        content: { pages: pagesWithImages },
-        cover_image_url: coverImageUrl,
-        status: 'completed',
+        content: { pages: pages.map((p) => ({ ...p, image_url: null })) },
       })
       .eq('id', book.id)
 
-    if (updateError) {
-      console.error('Failed to update book:', updateError)
-    }
-
-    // 9. 크레딧 차감 (프리미엄이 아닌 경우)
+    // 7. 크레딧 차감 (프리미엄이 아닌 경우) — 텍스트 생성 성공 시점에 차감
     if (!profile.is_premium) {
       await supabase
         .from('profiles')
@@ -149,16 +105,15 @@ export default async function handler(req, res) {
         .eq('id', user.id)
     }
 
-    // 10. 결과 반환
+    // 8. 즉시 응답 — 이미지는 /api/books/process-image가 1장씩 생성하고
+    //    /book/[id]가 완료될 때까지 폴링하며 트리거한다.
     return res.status(200).json({
       success: true,
       book: {
         id: book.id,
         title,
         category,
-        status: 'completed',
-        cover_image_url: coverImageUrl,
-        content: { pages: pagesWithImages },
+        status: 'generating',
       },
     })
 
@@ -169,52 +124,4 @@ export default async function handler(req, res) {
       details: error.message
     })
   }
-}
-
-/**
- * base64 이미지를 Supabase Storage에 업로드
- * @param {Object} supabase - Supabase 클라이언트
- * @param {string} bookId - 동화책 ID
- * @param {string} imageName - 이미지 이름
- * @param {string} base64Data - base64 인코딩된 이미지
- * @returns {Promise<string>} 공개 URL
- */
-async function uploadImageToStorage(supabase, bookId, imageName, base64Data) {
-  const bucketName = 'book-images'
-
-  // 버킷이 없으면 생성
-  const { data: bucketExists } = await supabase.storage.getBucket(bucketName)
-  if (!bucketExists) {
-    await supabase.storage.createBucket(bucketName, {
-      public: true,
-      fileSizeLimit: 10485760, // 10MB
-      allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
-    })
-  }
-
-  // 버퍼로 변환
-  const imageBuffer = Buffer.from(base64Data, 'base64')
-
-  // 파일 경로
-  const filePath = `${bookId}/${imageName}-${Date.now()}.png`
-
-  // 업로드
-  const { data, error } = await supabase.storage
-    .from(bucketName)
-    .upload(filePath, imageBuffer, {
-      contentType: 'image/png',
-      upsert: true,
-    })
-
-  if (error) {
-    console.error('Storage upload error:', error)
-    throw error
-  }
-
-  // 공개 URL 반환
-  const { data: { publicUrl } } = supabase.storage
-    .from(bucketName)
-    .getPublicUrl(data.path)
-
-  return publicUrl
 }
