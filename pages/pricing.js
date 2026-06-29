@@ -73,9 +73,14 @@ const PLANS = [
 ]
 
 const CREDIT_PACKAGES = [
-  { id: 'credits-5', name: '5권 크레딧', price: '₩4,900', credits: 5, priceId: null },
-  { id: 'credits-10', name: '10권 크레딧', price: '₩8,900', credits: 10, priceId: null, popular: true },
-  { id: 'credits-20', name: '20권 크레딧', price: '₩15,900', credits: 20, priceId: null },
+  {
+    id: 'credits-10',
+    name: '10권 크레딧',
+    price: '₩8,900',
+    credits: 10,
+    priceId: process.env.NEXT_PUBLIC_POLAR_CREDITS_PRODUCT_ID,
+    popular: true,
+  },
 ]
 
 export default function PricingPage() {
