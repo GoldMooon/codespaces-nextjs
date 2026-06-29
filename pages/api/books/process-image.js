@@ -53,7 +53,7 @@ export default async function handler(req, res) {
         .replace('{title}', book.title)
         .replace('{category}', book.category || '일반')
       try {
-        const b64 = await generateImage(openai, coverPrompt, { size: '1024x1024', quality: 'medium' })
+        const b64 = await generateImage(openai, coverPrompt, { size: '1024x1024', quality: 'low' })
         const url = await uploadImageToStorage(supabase, book.id, 'cover', b64)
         await supabase.from('books').update({ cover_image_url: url }).eq('id', book.id)
       } catch (e) {
@@ -65,25 +65,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ status: 'generating', remaining: remaining + 1 })
     }
 
-    // 2) 이미지가 없는 다음 페이지 1장 생성
-    const nextIndex = pages.findIndex((p) => p.image_url === null || p.image_url === undefined)
+    // 2) 이미지가 없는 다음 페이지들을 한 번에 BATCH장씩 병렬 생성
+    //    (low 화질 ~20초 × 병렬이라 호출당 ~25-30초로 함수 한도 안에서 안전)
+    const BATCH = 3
+    const todo = []
+    for (let i = 0; i < pages.length && todo.length < BATCH; i++) {
+      if (pages[i].image_url === null || pages[i].image_url === undefined) todo.push(i)
+    }
 
-    if (nextIndex === -1) {
+    if (todo.length === 0) {
       // 모든 이미지 완료 → 완료 처리
       await supabase.from('books').update({ status: 'completed' }).eq('id', book.id)
       return res.status(200).json({ status: 'completed', remaining: 0 })
     }
 
-    const page = pages[nextIndex]
-    try {
-      const b64 = await generateImage(openai, page.image_prompt, { size: '1024x1024', quality: 'medium' })
-      const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
-      pages[nextIndex] = { ...page, image_url: url }
-    } catch (e) {
-      console.error(`Page ${page.page} generation failed:`, e.message)
-      // 실패한 페이지는 빈 문자열로 표시해 다음으로 진행 (null이 아니므로 재시도 안 함)
-      pages[nextIndex] = { ...page, image_url: '' }
-    }
+    await Promise.all(
+      todo.map(async (idx) => {
+        const page = pages[idx]
+        try {
+          const b64 = await generateImage(openai, page.image_prompt, { size: '1024x1024', quality: 'low' })
+          const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
+          pages[idx] = { ...page, image_url: url }
+        } catch (e) {
+          console.error(`Page ${page.page} generation failed:`, e.message)
+          // 실패한 페이지는 빈 문자열로 표시해 다음으로 진행 (null이 아니므로 재시도 안 함)
+          pages[idx] = { ...page, image_url: '' }
+        }
+      })
+    )
 
     const remaining = pages.filter((p) => p.image_url === null || p.image_url === undefined).length
     const allDone = remaining === 0

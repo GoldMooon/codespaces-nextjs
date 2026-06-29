@@ -142,7 +142,8 @@ export default function BookPage() {
           <h2>🎨 그림을 그리고 있어요</h2>
           <p>이야기는 완성됐어요! 이제 {pageCount > 0 ? `${pageCount}장의 ` : ''}그림을 그리는 중이에요.</p>
           <p style={{ color: '#888', fontSize: '0.9rem' }}>
-            보통 1분 정도 걸려요. 이 페이지는 완료되면 자동으로 새로고침됩니다.
+            그림 한 장당 수십 초가 걸려 보통 2~3분 정도 소요돼요.
+            이 페이지를 열어두면 완성되는 대로 자동으로 표시됩니다.
           </p>
           <LoadingSpinner />
         </div>
