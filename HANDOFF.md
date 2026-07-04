@@ -53,8 +53,18 @@
 
 ## ⏭️ 다음에 할 일 (우선순위순)
 
-1. **Polar 운영(production) 전환**: 현재 샌드박스. 운영 토큰 새로 발급 → 제품 3종 재생성(KRW) →
-   `POLAR_SERVER`를 운영 URL로 → 웹훅 시크릿/엔드포인트 운영용으로 재등록 → Vercel env 갱신.
+1. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
+   - **막힌 지점**: 운영(production) Polar 액세스 토큰이 필요한데, 이건 사용자가 polar.sh에 운영 계정으로
+     로그인해서 발급해야 함(Claude가 대신 발급 불가). 토큰 요청까지 안내는 해뒀고, 사용자가
+     "여기까지 저장해줘"라고 해서 토큰 없이 중단된 상태.
+   - **토큰 받으면 이어서 할 일**:
+     1) 운영 계정에 제품 3종 재생성(KRW) — 월간구독 ₩9,900 / 연간구독 ₩89,000 / 크레딧10권 ₩8,900
+        (샌드박스 때처럼 organization_id 넣지 말 것, currency는 조직 기본통화에 맞출 것 — 이전에 422 에러 겪음)
+     2) `.env.local` + Vercel production env: `POLAR_SERVER`를 `https://api.polar.sh`로,
+        `POLAR_ACCESS_TOKEN`/제품 ID 3종을 운영 값으로 교체
+     3) 운영용 웹훅 엔드포인트 신규 등록(`https://mytale-ai.vercel.app/api/payment/webhook`) →
+        새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
+     4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
 2. (선택) 사진 기반 동화(`isPhotoBased`/`character_photo_url`) 기능 점검 — 코드 경로는 있으나 미검증.
 3. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
