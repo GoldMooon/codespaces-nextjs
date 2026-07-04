@@ -144,7 +144,7 @@ export default function CreatePage() {
           {/* 크레딧 정보 */}
           {!profile?.is_premium && (
             <div className={styles.creditInfo}>
-              <span>남은 무료 체험: </span>
+              <span>보유 크레딧: </span>
               <strong>{profile?.credits || 0}권</strong>
               {profile?.credits < 1 && (
                 <Button
@@ -206,7 +206,7 @@ export default function CreatePage() {
                 <p className={styles.hint}>
                   {profile?.is_premium
                     ? '프리미엄 회원: 무제한으로 즐기세요!'
-                    : `무료 체험 중입니다 (${profile?.credits || 0}회 남음)`}
+                    : `보유 크레딧: ${profile?.credits || 0}회`}
                 </p>
               </div>
             </form>

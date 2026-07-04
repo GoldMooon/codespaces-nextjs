@@ -9,27 +9,6 @@ import styles from '../styles/pricing.module.css'
 
 const PLANS = [
   {
-    id: 'free',
-    name: '무료 체험',
-    price: '₩0',
-    period: '영구 무료',
-    description: '동화책 한 권을 무료로 만들어보세요',
-    features: [
-      '동화책 1권 무료 체험',
-      '최대 10페이지',
-      '텍스트 + 이미지 생성',
-      'PDF 다운로드',
-    ],
-    notIncluded: [
-      '추가 동화책 생성',
-      '사진 기반 동화책',
-      '구독자 전용 기능',
-    ],
-    priceId: null,
-    buttonText: '무료로 시작하기',
-    variant: 'outline',
-  },
-  {
     id: 'monthly',
     name: '월간 구독',
     price: '₩9,900',
@@ -120,12 +99,6 @@ export default function PricingPage() {
       return
     }
 
-    if (!priceId) {
-      // Free plan or demo
-      router.push('/create')
-      return
-    }
-
     setProcessing(true)
 
     try {
@@ -178,9 +151,9 @@ export default function PricingPage() {
           ) : (
             <div className={styles.creditsInfo}>
               {user ? (
-                <p>남은 무료 체험: <strong>{profile?.credits || 0}권</strong></p>
+                <p>보유 크레딧: <strong>{profile?.credits || 0}권</strong></p>
               ) : (
-                <p>첫 동화책은 무료로 만들어드려요! <a href="/login">로그인</a></p>
+                <p>크레딧을 구매하거나 구독하고 나만의 동화책을 만들어보세요! <a href="/login">로그인</a></p>
               )}
             </div>
           )}
@@ -216,9 +189,9 @@ export default function PricingPage() {
                 <Button
                   variant={plan.variant}
                   fullWidth
-                  disabled={processing || (profile?.is_premium && plan.id !== 'free')}
+                  disabled={processing || profile?.is_premium}
                   loading={processing}
-                  onClick={() => handleSubscribe(plan.priceId, plan.id === 'free' ? null : 'subscription')}
+                  onClick={() => handleSubscribe(plan.priceId, 'subscription')}
                 >
                   {plan.buttonText}
                 </Button>

@@ -29,14 +29,14 @@ export default function Home() {
               나만의 특별한 동화책을 PDF로 다운로드하세요.
             </p>
             <div className={styles.heroActions}>
-              <Link href="/create">
-                <Button size="large">✨ 무료로 시작하기</Button>
+              <Link href="/pricing">
+                <Button size="large">✨ 지금 시작하기</Button>
               </Link>
               <Link href="/pricing">
                 <Button variant="outline" size="large">요금제 보기</Button>
               </Link>
             </div>
-            <p className={styles.heroHint}>첫 번째 동화책은 무료로 만들어드려요! 🎉</p>
+            <p className={styles.heroHint}>크레딧 구매 또는 구독으로 나만의 동화책을 만들어보세요 🎉</p>
           </div>
           <div className={styles.heroImage}>
             <div className={styles.heroBook}>
@@ -79,9 +79,9 @@ export default function Home() {
         {/* CTA Section */}
         <section className={styles.cta}>
           <h2>지금 바로 첫 동화책을 만들어보세요!</h2>
-          <p>첫 번째 동화책은 무료로 만들어드려요.</p>
+          <p>합리적인 가격의 크레딧과 구독으로 시작할 수 있어요.</p>
           <Link href="/signup">
-            <Button size="large">🚀 무료로 시작하기</Button>
+            <Button size="large">🚀 지금 시작하기</Button>
           </Link>
         </section>
 

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT NOT NULL,
   full_name TEXT,
   avatar_url TEXT,
-  credits INTEGER DEFAULT 1,          -- 첫 무료 체험 1권
+  credits INTEGER DEFAULT 0,          -- 무료 체험 없음 — 크레딧 구매 또는 구독 후 이용
   is_premium BOOLEAN DEFAULT false,
   subscription_status TEXT DEFAULT 'free',
   polar_customer_id TEXT,
