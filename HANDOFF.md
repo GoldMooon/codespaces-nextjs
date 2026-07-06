@@ -1,12 +1,13 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-04
+> 마지막 업데이트: 2026-07-06
 
 ## 사이트 주소 변경
 운영 도메인이 `https://codespaces-nextjs-lemon.vercel.app` → **`https://mytale-ai.vercel.app`** 로 변경됨.
 - Vercel 프로젝트명 `codespaces-nextjs` → `mytale-ai`로 rename, 관련 별칭(alias) 전부 정리.
 - `NEXT_PUBLIC_APP_URL`(production), Polar 웹훅 엔드포인트 URL 모두 새 도메인으로 갱신 완료.
 - 부수 발견: 프로젝트에 Vercel Deployment Protection(SSO 게이트)이 `all_except_custom_domains`로 걸려 있어 `.vercel.app` 별칭이 전부 비공개(팀원만 접근) 상태였음 — 실사용자 접근이 막혀 있었던 것으로 보여 **비활성화(`ssoProtection: null`)** 처리함. 커스텀 도메인(구매한 실제 도메인)을 연결할 계획이면 그때 다시 필요에 맞게 설정 검토.
+- ⚠️ **중요 — 2026-07-06에 발견한 함정**: `mytale-ai.vercel.app`을 처음에 `vercel alias set`으로 수동 연결했었는데, 이런 수동 alias는 **git push 자동배포를 따라가지 않는다**. 그래서 이후 여러 커밋(모바일 UI 수정, PDF 폰트 수정 등)이 실제로는 이 도메인에 전혀 반영되지 않고 2일 전 배포에 멈춰 있었음(반면 자동생성되는 `mytale-ai-gold-moon.vercel.app`은 정상적으로 매번 갱신됨). **해결책**: `mytale-ai.vercel.app`을 Vercel 프로젝트의 정식 "Domain"으로 등록(`POST /v10/projects/.../domains`)해서 이제는 매 프로덕션 배포마다 자동으로 갱신되도록 고쳐놓음. 앞으로 배포 후 안 바뀐 것처럼 보이면 `vercel alias ls`로 실제 가리키는 배포가 최신인지부터 확인할 것.
 
 ## 무료 체험 제거 → 시작부터 유료
 1인이 여러 이메일로 무료 크레딧을 반복 수령하는 어뷰징 문제를 근본적으로 차단하기 위해 **무료 체험 자체를 없앰**.
@@ -48,6 +49,17 @@
   - 실제 API로 책 1권 생성해 표지+4페이지 이미지를 직접 확인 — 화풍·캐릭터(이름·색·의상) 전 페이지 일관 유지 검증 완료.
   - ⚠️ **기존 책엔 적용 안 됨, style_guide 도입 이후 새로 만든 책부터** 적용.
   - ⚠️ 잔여 리스크: style_guide에 없는 조연 캐릭터가 이야기 중간에 새로 등장해 이후에도 반복되면, 그 조연만 페이지마다 다르게 그려질 수 있음. 실사용 중 발견되면 프롬프트에 "주요 조연도 첫 등장 시점에 고정 외형 기재" 지시 추가.
+
+### 생성 완료 알림 (완료·검증됨)
+- 10페이지 이상은 "최소 5분 이상 소요" 안내로 문구 변경, 다른 탭/창으로 이동해도 완성/실패 시 브라우저 Notification API로 알림.
+- `pages/book/[id].js`: 권한 상태(default/granted/denied)별 안내 분기 + `wasGeneratingRef`/`notifiedRef`로 전환 시점 1회만 알림.
+
+### 모바일 뷰어 버튼 겹침 + PDF 다운로드 실패 (완료·검증됨 — 실제 프로덕션에서 확인)
+- 문제 1: 모바일에서 이전/다음 버튼이 안 보임 — `.nav`/`.controls` 두 바가 둘 다 `position:fixed; left:50%; transform:translateX(-50%)`라 좁은 화면에서 서로 겹쳐 클릭을 가로챔(같은 원인으로 PDF 버튼 텍스트도 세로로 줄바꿈됨). → 모바일 미디어쿼리에서 두 바를 `position:static`인 일반 흐름 요소로 전환(`styles/components/BookViewer.module.css`).
+- 문제 2: `goToNext`의 off-by-one으로 마지막 페이지를 "다음" 버튼으로 절대 볼 수 없었음(데스크톱 전용 썸네일로만 가능) → 가드 조건 수정(`components/book/BookViewer.js`).
+- 문제 3: PDF 다운로드가 `.json` + `{"error":"Unauthorized"}`로 저장됨 — `handleDownload`가 인증 헤더 없이 fetch → 401을 그대로 blob 저장. Authorization 헤더 추가.
+- 문제 4 (3을 고치고 나서 드러난 2차 버그): pdf-lib의 `StandardFonts`는 WinAnsi 인코딩만 지원해 한글 포함 모든 실제 책에서 PDF 생성이 500으로 실패하고 있었음. **Pretendard 폰트**(OFL 라이선스, `public/fonts/Pretendard-{Regular,Bold}.ttf`)를 `@pdf-lib/fontkit`으로 임베드(`subset:true`)하도록 교체(`lib/pdf-generator.js`). OTF/CFF는 이 fontkit 버전에서 파싱 버그로 실패하니 **반드시 TTF**를 써야 함.
+- 검증: Playwright로 실제 로그인→모바일 뷰포트→페이지 이동→PDF 다운로드까지 end-to-end 확인, `pdf-parse`로 PDF 안의 한글 텍스트가 정확히 추출되는 것까지 확인.
 
 ---
 
