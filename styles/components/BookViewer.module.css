@@ -2,10 +2,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  padding: 40px 20px 120px;
+  gap: clamp(16px, 4vw, 24px);
+  padding: clamp(20px, 5vw, 40px) clamp(12px, 4vw, 20px) 120px;
   outline: none;
-  min-height: 80vh;
+  min-height: 80svh; /* 모바일 브라우저 주소창/툴바 크기 변화에 흔들리지 않는 동적 뷰포트 단위 */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .cover {
@@ -38,20 +40,20 @@
 }
 
 .coverTitle {
-  font-size: 36px;
+  font-size: clamp(24px, 7vw, 36px);
   font-weight: 800;
   color: #1e293b;
   margin: 0 0 12px;
 }
 
 .coverCategory {
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   color: #64748b;
   margin: 0 0 24px;
 }
 
 .coverHint {
-  font-size: 13px;
+  font-size: clamp(12px, 3vw, 13px);
   color: #94a3b8;
   margin: 0;
 }
@@ -74,18 +76,21 @@
 }
 
 .pageText {
-  font-size: 18px;
+  font-size: clamp(15px, 4vw, 18px);
   line-height: 1.8;
   color: #334155;
   text-align: center;
   max-width: 600px;
   margin: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .nav {
   display: flex;
   align-items: center;
-  gap: 24px;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px 24px;
   background: white;
   border-radius: 50px;
@@ -112,6 +117,7 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 12px 20px;
   background: white;
@@ -173,31 +179,40 @@
     display: none;
   }
 
-  .coverTitle {
-    font-size: 28px;
-  }
-
-  .pageText {
-    font-size: 16px;
-  }
-
   /* 모바일에서는 두 개의 fixed 바(nav/controls)가 겹치거나
      left:50% 기준 shrink-to-fit 계산 때문에 글자가 세로로
-     줄바꿈되는 문제가 있어, 일반 흐름의 정적 요소로 전환 */
+     줄바꿈되는 문제가 있어, 일반 흐름의 정적 요소로 전환.
+     너비는 뷰포트 비율(vw)로 잡아 기기 화면 크기에 맞춰 유동적으로 늘고 준다. */
   .nav,
   .controls {
     position: static;
     left: auto;
     bottom: auto;
     transform: none;
-    width: 100%;
-    max-width: 400px;
+    width: min(94vw, 420px);
     box-sizing: border-box;
     flex-wrap: wrap;
-    justify-content: center;
+    row-gap: 8px;
   }
 
   .container {
-    padding-bottom: 40px;
+    /* 홈 인디케이터가 있는 기기(iPhone 등)에서 마지막 컨트롤 바가
+       하단 안전영역에 가리지 않도록 여백 확보 */
+    padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* 아주 작은 화면(구형 iPhone SE 등)에서는 여백/간격을 한 단계 더 좁힌다 */
+@media (max-width: 360px) {
+  .nav,
+  .controls {
+    padding-left: 16px;
+    padding-right: 16px;
+    gap: 12px;
+  }
+
+  .pageIndicator {
+    min-width: 56px;
+    font-size: 13px;
   }
 }
