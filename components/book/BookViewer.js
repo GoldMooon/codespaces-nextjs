@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import styles from '../../styles/components/BookViewer.module.css'
 import Button from '../ui/Button'
 
@@ -16,7 +17,7 @@ export default function BookViewer({ book }) {
   }
 
   const goToNext = () => {
-    if (currentPage < totalPages - 1) {
+    if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1)
     }
   }
@@ -28,9 +29,24 @@ export default function BookViewer({ book }) {
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(`/api/books/pdf/${book.id}`)
-      const blob = await response.blob()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        alert('로그인이 필요합니다.')
+        return
+      }
 
+      const response = await fetch(`/api/books/pdf/${book.id}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      if (!response.ok) {
+        const message = response.headers.get('content-type')?.includes('application/json')
+          ? (await response.json()).error
+          : `HTTP ${response.status}`
+        throw new Error(message || 'PDF 생성에 실패했습니다.')
+      }
+
+      const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -41,7 +57,7 @@ export default function BookViewer({ book }) {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Download failed:', error)
-      alert('PDF 다운로드에 실패했습니다.')
+      alert(`PDF 다운로드에 실패했습니다: ${error.message}`)
     }
   }
 

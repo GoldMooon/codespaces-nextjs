@@ -180,4 +180,24 @@
   .pageText {
     font-size: 16px;
   }
+
+  /* 모바일에서는 두 개의 fixed 바(nav/controls)가 겹치거나
+     left:50% 기준 shrink-to-fit 계산 때문에 글자가 세로로
+     줄바꿈되는 문제가 있어, 일반 흐름의 정적 요소로 전환 */
+  .nav,
+  .controls {
+    position: static;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    width: 100%;
+    max-width: 400px;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .container {
+    padding-bottom: 40px;
+  }
 }
