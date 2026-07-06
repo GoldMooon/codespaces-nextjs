@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL } from '../../../lib/openai'
 
 // 텍스트 생성만 동기 처리(~5초)하고 이미지는 별도 엔드포인트(process-image)가
 // 1장씩 처리하므로 이 함수는 짧게 끝난다.
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       .replace('{pageCount}', pageCount)
 
     const textResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: TEXT_MODEL,
       messages: [{ role: 'user', content: textPrompt }],
       response_format: { type: 'json_object' },
       max_tokens: 4000,

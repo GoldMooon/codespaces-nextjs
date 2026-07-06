@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt } from '../../../lib/openai'
+import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt, IMAGE_QUALITY } from '../../../lib/openai'
 import { uploadImageToStorage } from '../../../lib/storage'
 
 // 이미지 1장만 생성하므로 단일 요청은 ~50-60초. 함수 한도 안에서 안전하게 끝난다.
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
         .replace('{category}', book.category || '일반')
       const coverPrompt = buildImagePrompt(styleGuide, coverScene)
       try {
-        const b64 = await generateImage(openai, coverPrompt, { size: '1024x1024', quality: 'low' })
+        const b64 = await generateImage(openai, coverPrompt, { size: '1024x1024', quality: IMAGE_QUALITY })
         const url = await uploadImageToStorage(supabase, book.id, 'cover', b64)
         await supabase.from('books').update({ cover_image_url: url }).eq('id', book.id)
       } catch (e) {
@@ -69,7 +69,8 @@ export default async function handler(req, res) {
     }
 
     // 2) 이미지가 없는 다음 페이지들을 한 번에 BATCH장씩 병렬 생성
-    //    (low 화질 ~20초 × 병렬이라 호출당 ~25-30초로 함수 한도 안에서 안전)
+    //    (화질은 OPENAI_IMAGE_QUALITY 환경변수로 조절 — low 기준 ~20초 × 병렬이라
+    //     호출당 ~25-30초로 함수 한도 안에서 안전. quality를 올리면 그만큼 느려짐)
     const BATCH = 3
     const todo = []
     for (let i = 0; i < pages.length && todo.length < BATCH; i++) {
@@ -87,7 +88,7 @@ export default async function handler(req, res) {
         const page = pages[idx]
         try {
           const prompt = buildImagePrompt(styleGuide, page.image_prompt)
-          const b64 = await generateImage(openai, prompt, { size: '1024x1024', quality: 'low' })
+          const b64 = await generateImage(openai, prompt, { size: '1024x1024', quality: IMAGE_QUALITY })
           const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
           pages[idx] = { ...page, image_url: url }
         } catch (e) {
