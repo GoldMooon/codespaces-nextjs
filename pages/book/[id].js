@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import Link from 'next/link'
@@ -7,7 +7,24 @@ import Header from '../../components/ui/Header'
 import Footer from '../../components/ui/Footer'
 import BookViewer from '../../components/book/BookViewer'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import Button from '../../components/ui/Button'
 import styles from '../../styles/book.module.css'
+
+// 다른 탭으로 이동해도 완성/실패 시 알려주기 위한 브라우저 알림
+function notifyBookDone(bookData) {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return
+  if (Notification.permission !== 'granted') return
+
+  const isFailed = bookData.status === 'failed'
+  const notification = new Notification(
+    isFailed ? '😢 동화책 생성에 실패했어요' : '🎨 동화책이 완성됐어요!',
+    { body: bookData.title, icon: '/favicon.ico' }
+  )
+  notification.onclick = () => {
+    window.focus()
+    notification.close()
+  }
+}
 
 export default function BookPage() {
   const router = useRouter()
@@ -16,12 +33,42 @@ export default function BookPage() {
   const [book, setBook] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notifPermission, setNotifPermission] = useState('unsupported')
+
+  // 생성 중이었던 책이 완료/실패로 바뀌는 "전환 순간"에만 알림을 1회 보낸다
+  const wasGeneratingRef = useRef(false)
+  const notifiedRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      setNotifPermission(Notification.permission)
+    }
+  }, [])
+
+  const requestNotificationPermission = async () => {
+    if (typeof Notification === 'undefined') return
+    const permission = await Notification.requestPermission()
+    setNotifPermission(permission)
+  }
 
   useEffect(() => {
     if (!id) return
 
     let cancelled = false
     let processing = false
+
+    // 생성 중 -> 완료/실패로 바뀌는 순간을 감지해 알림을 보낸다
+    const checkAndNotify = (bookData) => {
+      if (!bookData) return
+      if (bookData.status === 'generating') {
+        wasGeneratingRef.current = true
+        return
+      }
+      if (wasGeneratingRef.current && !notifiedRef.current) {
+        notifiedRef.current = true
+        notifyBookDone(bookData)
+      }
+    }
 
     // 이미지 1장 생성을 트리거하는 엔드포인트 호출
     const triggerImage = async () => {
@@ -72,6 +119,7 @@ export default function BookPage() {
 
       setBook(data)
       setLoading(false)
+      checkAndNotify(data)
 
       // 이미지 생성이 진행 중이면 다음 이미지 1장을 생성하고 반복
       if (data.status === 'generating' && !processing) {
@@ -83,7 +131,10 @@ export default function BookPage() {
         if (!result || result.status === 'completed') {
           // 최종 상태 반영을 위해 한 번 더 조회
           const { data: fresh } = await supabase.from('books').select('*').eq('id', id).single()
-          if (!cancelled && fresh) setBook(fresh)
+          if (!cancelled && fresh) {
+            setBook(fresh)
+            checkAndNotify(fresh)
+          }
         } else {
           setTimeout(fetchBook, 500)
         }
@@ -142,9 +193,26 @@ export default function BookPage() {
           <h2>🎨 그림을 그리고 있어요</h2>
           <p>이야기는 완성됐어요! 이제 {pageCount > 0 ? `${pageCount}장의 ` : ''}그림을 그리는 중이에요.</p>
           <p style={{ color: '#888', fontSize: '0.9rem' }}>
-            그림 한 장당 수십 초가 걸려 보통 2~3분 정도 소요돼요.
-            이 페이지를 열어두면 완성되는 대로 자동으로 표시됩니다.
+            {pageCount >= 10
+              ? '10페이지 이상은 그림 생성에 최소 5분 이상 소요될 수 있어요.'
+              : '페이지 수가 많을수록 오래 걸려요. 보통 몇 분 정도 소요돼요.'}
+            {' '}이 탭을 열어둔 채 다른 탭이나 창을 사용하셔도 계속 진행됩니다.
           </p>
+
+          {notifPermission === 'default' && (
+            <Button variant="outline" size="small" onClick={requestNotificationPermission}>
+              🔔 완료되면 알림 받기
+            </Button>
+          )}
+          {notifPermission === 'granted' && (
+            <p style={{ color: '#888', fontSize: '0.85rem' }}>🔔 완성되면 알림을 보내드릴게요.</p>
+          )}
+          {notifPermission === 'denied' && (
+            <p style={{ color: '#888', fontSize: '0.85rem' }}>
+              브라우저 알림이 꺼져있어요. 이 탭을 열어두시면 완성 시 자동으로 표시됩니다.
+            </p>
+          )}
+
           <LoadingSpinner />
         </div>
         <Footer />
