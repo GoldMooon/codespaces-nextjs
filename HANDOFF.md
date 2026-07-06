@@ -1,13 +1,13 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-06
+> 마지막 업데이트: 2026-07-06 (전체 검증·배포 완료)
 
 ## 사이트 주소 변경
 운영 도메인이 `https://codespaces-nextjs-lemon.vercel.app` → **`https://mytale-ai.vercel.app`** 로 변경됨.
 - Vercel 프로젝트명 `codespaces-nextjs` → `mytale-ai`로 rename, 관련 별칭(alias) 전부 정리.
 - `NEXT_PUBLIC_APP_URL`(production), Polar 웹훅 엔드포인트 URL 모두 새 도메인으로 갱신 완료.
 - 부수 발견: 프로젝트에 Vercel Deployment Protection(SSO 게이트)이 `all_except_custom_domains`로 걸려 있어 `.vercel.app` 별칭이 전부 비공개(팀원만 접근) 상태였음 — 실사용자 접근이 막혀 있었던 것으로 보여 **비활성화(`ssoProtection: null`)** 처리함. 커스텀 도메인(구매한 실제 도메인)을 연결할 계획이면 그때 다시 필요에 맞게 설정 검토.
-- ⚠️ **중요 — 2026-07-06에 발견한 함정**: `mytale-ai.vercel.app`을 처음에 `vercel alias set`으로 수동 연결했었는데, 이런 수동 alias는 **git push 자동배포를 따라가지 않는다**. 그래서 이후 여러 커밋(모바일 UI 수정, PDF 폰트 수정 등)이 실제로는 이 도메인에 전혀 반영되지 않고 2일 전 배포에 멈춰 있었음(반면 자동생성되는 `mytale-ai-gold-moon.vercel.app`은 정상적으로 매번 갱신됨). **해결책**: `mytale-ai.vercel.app`을 Vercel 프로젝트의 정식 "Domain"으로 등록(`POST /v10/projects/.../domains`)해서 이제는 매 프로덕션 배포마다 자동으로 갱신되도록 고쳐놓음. 앞으로 배포 후 안 바뀐 것처럼 보이면 `vercel alias ls`로 실제 가리키는 배포가 최신인지부터 확인할 것.
+- ⚠️ **중요 — 2026-07-06에 발견한 함정 (해결됨)**: `mytale-ai.vercel.app`을 처음에 `vercel alias set`으로 수동 연결했었는데, 이런 수동 alias는 **git push 자동배포를 따라가지 않는다**. 그래서 이후 여러 커밋(모바일 UI 수정, PDF 폰트 수정 등)이 실제로는 이 도메인에 전혀 반영되지 않고 2일 전 배포에 멈춰 있었음(반면 자동생성되는 `mytale-ai-gold-moon.vercel.app`은 정상적으로 매번 갱신됨). **해결책**: `mytale-ai.vercel.app`을 Vercel 프로젝트의 정식 "Domain"으로 등록(`POST /v10/projects/.../domains`)해서 이제는 매 프로덕션 배포마다 자동으로 갱신되도록 고쳐놓음. 2026-07-06 최종 커밋까지 alias가 정상적으로 자동 반영되는 것 확인 완료. 앞으로 배포 후 안 바뀐 것처럼 보이면 `vercel alias ls`로 실제 가리키는 배포가 최신인지부터 확인할 것.
 
 ## 무료 체험 제거 → 시작부터 유료
 1인이 여러 이메일로 무료 크레딧을 반복 수령하는 어뷰징 문제를 근본적으로 차단하기 위해 **무료 체험 자체를 없앰**.
@@ -61,6 +61,21 @@
 - 문제 4 (3을 고치고 나서 드러난 2차 버그): pdf-lib의 `StandardFonts`는 WinAnsi 인코딩만 지원해 한글 포함 모든 실제 책에서 PDF 생성이 500으로 실패하고 있었음. **Pretendard 폰트**(OFL 라이선스, `public/fonts/Pretendard-{Regular,Bold}.ttf`)를 `@pdf-lib/fontkit`으로 임베드(`subset:true`)하도록 교체(`lib/pdf-generator.js`). OTF/CFF는 이 fontkit 버전에서 파싱 버그로 실패하니 **반드시 TTF**를 써야 함.
 - 검증: Playwright로 실제 로그인→모바일 뷰포트→페이지 이동→PDF 다운로드까지 end-to-end 확인, `pdf-parse`로 PDF 안의 한글 텍스트가 정확히 추출되는 것까지 확인.
 
+### OpenAI 모델/화질 설정값화 (완료)
+- `OPENAI_TEXT_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_QUALITY` 환경변수 추가(`.env.local` + Vercel production).
+  코드 수정 없이 값만 바꾸면 모델/화질 조정 가능(기본값: `gpt-4o-mini` / `gpt-image-2` / `low`).
+- `lib/openai.js`가 이 값들을 export하고, `create.js`/`process-image.js`가 하드코딩 대신 이 상수를 사용하도록 변경.
+
+### 모바일 뷰어 유동적 반응형 개선 (완료·검증됨)
+- 문제: 이전/다음 버튼 바·확대축소+PDF 버튼 바가 `justify-content:center`라 내용물이 가운데 뭉쳐 있어 기기 화면 폭에 따라 정렬이 흐트러져 보임. 폰트/여백도 768px 브레이크포인트 하나로만 두 단계 전환되어 그 사이 기기들에서 어색했음.
+- 해결(`styles/components/BookViewer.module.css`):
+  - `.nav`/`.controls`를 `justify-content: space-between`으로 전환 — 이전/다음 버튼이 화면 양 끝에 고정(데스크톱은 바 너비=내용물 크기라 시각적 변화 없음).
+  - 고정 픽셀 대신 `clamp()`/`vw` 기반 유동 크기(폰트·패딩·gap)로 전환해 화면 폭에 따라 부드럽게 스케일.
+  - 모바일 바 너비를 `min(94vw, 420px)`로 — 기기 폭에 비례해 유동적으로 조정.
+  - iPhone 홈 인디케이터 안전영역(`env(safe-area-inset-bottom)`) 대응, `100vh` 대신 `100svh`로 모바일 브라우저 주소창 변화에 안정적으로 대응.
+  - 360px 이하 초소형 화면용 추가 브레이크포인트.
+- 검증: Playwright로 5개 기기 폭(360/375/390/430/768px = 소형 안드로이드/iPhone SE/iPhone 12/iPhone 14 Pro Max/iPad 세로)에서 가로 스크롤 없음 + 정렬 확인.
+
 ---
 
 ## ⏭️ 다음에 할 일 (우선순위순)
@@ -79,6 +94,13 @@
      4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
 2. (선택) 사진 기반 동화(`isPhotoBased`/`character_photo_url`) 기능 점검 — 코드 경로는 있으나 미검증.
 3. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
+
+---
+
+## 🚀 배포 상태 (2026-07-06 기준)
+- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean`).
+- **Vercel**: 최신 커밋(`e700fbb`)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 200 응답, alias 최신 배포 자동 추종 확인).
+- **Supabase**: 이번 세션 변경사항은 전부 앱 코드/정적 자산(폰트 파일)이라 DB 스키마 변경 없음 — 라이브 DB가 `supabase-schema.sql`과 이미 일치함(`profiles.credits` 기본값 `0` 확인).
 
 ---
 
