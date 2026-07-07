@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS books (
   title TEXT NOT NULL,
   category TEXT,
   theme TEXT,
-  content JSONB,                      -- { pages: [{text, image_url, image_prompt}] }
+  age_group TEXT DEFAULT 'preschool', -- 'toddler'(0~5) | 'preschool'(5~7) | 'elementary'(8~13)
+  content JSONB,                      -- { style_guide, pages: [{text, image_url, image_prompt, speech_bubble}] }
   cover_image_url TEXT,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'generating', 'completed', 'failed')),
   page_count INTEGER DEFAULT 10,

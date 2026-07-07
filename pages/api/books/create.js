@@ -1,10 +1,10 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance } from '../../../lib/openai'
 
-// 텍스트 생성만 동기 처리(~5초)하고 이미지는 별도 엔드포인트(process-image)가
-// 1장씩 처리하므로 이 함수는 짧게 끝난다.
+// 텍스트 생성만 동기 처리하고 이미지는 별도 엔드포인트(process-image)가
+// 1장씩 처리하므로 이 함수는 짧게 끝난다. (추론 모델 사용 시 수십 초까지 걸릴 수 있어 넉넉히 잡음)
 export const config = {
-  maxDuration: 60,
+  maxDuration: 90,
 }
 
 export default async function handler(req, res) {
@@ -45,6 +45,8 @@ export default async function handler(req, res) {
 
     // 3. 요청 데이터 파싱
     const { title, category, theme, pageCount = 10, isPhotoBased = false, characterPhotoUrl } = req.body
+    const validAgeGroupIds = AGE_GROUPS.map((g) => g.id)
+    const ageGroup = validAgeGroupIds.includes(req.body.ageGroup) ? req.body.ageGroup : 'preschool'
 
     if (!title || !theme) {
       return res.status(400).json({ error: 'Title and theme are required' })
@@ -58,6 +60,7 @@ export default async function handler(req, res) {
         title,
         category,
         theme,
+        age_group: ageGroup,
         page_count: pageCount,
         status: 'generating',
         is_photo_based: isPhotoBased,
@@ -77,12 +80,15 @@ export default async function handler(req, res) {
       .replace('{category}', category || '일반')
       .replace('{theme}', theme)
       .replace('{pageCount}', pageCount)
+      .replace('{ageGroupGuidance}', getAgeGroupGuidance(ageGroup))
 
     const textResponse = await openai.chat.completions.create({
       model: TEXT_MODEL,
       messages: [{ role: 'user', content: textPrompt }],
       response_format: { type: 'json_object' },
-      max_tokens: 4000,
+      // max_tokens는 최신 추론 모델(gpt-5.x 등)에서 지원되지 않아 max_completion_tokens 사용.
+      // 추론 모델은 응답 전에 내부적으로 reasoning_tokens를 소모하므로 여유 있게 잡음.
+      max_completion_tokens: 8000,
     })
 
     const storyContent = JSON.parse(textResponse.choices[0].message.content)

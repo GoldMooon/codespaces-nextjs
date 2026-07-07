@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt, IMAGE_QUALITY } from '../../../lib/openai'
+import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt, withSpeechBubble, IMAGE_QUALITY } from '../../../lib/openai'
 import { uploadImageToStorage } from '../../../lib/storage'
 
 // 이미지 1장만 생성하므로 단일 요청은 ~50-60초. 함수 한도 안에서 안전하게 끝난다.
@@ -87,7 +87,8 @@ export default async function handler(req, res) {
       todo.map(async (idx) => {
         const page = pages[idx]
         try {
-          const prompt = buildImagePrompt(styleGuide, page.image_prompt)
+          const scene = withSpeechBubble(page.image_prompt, page.speech_bubble)
+          const prompt = buildImagePrompt(styleGuide, scene)
           const b64 = await generateImage(openai, prompt, { size: '1024x1024', quality: IMAGE_QUALITY })
           const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
           pages[idx] = { ...page, image_url: url }

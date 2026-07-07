@@ -6,6 +6,7 @@ import Header from '../components/ui/Header'
 import Footer from '../components/ui/Footer'
 import Button from '../components/ui/Button'
 import CategorySelect from '../components/book/CategorySelect'
+import AgeGroupSelect from '../components/book/AgeGroupSelect'
 import ThemeInput from '../components/book/ThemeInput'
 import GenerationProgress from '../components/book/GenerationProgress'
 import styles from '../styles/create.module.css'
@@ -18,6 +19,7 @@ export default function CreatePage() {
 
   // Form state
   const [category, setCategory] = useState('')
+  const [ageGroup, setAgeGroup] = useState('preschool')
   const [title, setTitle] = useState('')
   const [theme, setTheme] = useState('')
   const [pageCount, setPageCount] = useState(10)
@@ -92,6 +94,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           title: title.trim(),
           category,
+          ageGroup,
           theme: theme.trim(),
           pageCount,
         })
@@ -179,6 +182,10 @@ export default function CreatePage() {
             <form className={styles.form} onSubmit={handleSubmit}>
               <div className={styles.section}>
                 <CategorySelect value={category} onChange={setCategory} />
+              </div>
+
+              <div className={styles.section}>
+                <AgeGroupSelect value={ageGroup} onChange={setAgeGroup} />
               </div>
 
               <div className={styles.section}>
