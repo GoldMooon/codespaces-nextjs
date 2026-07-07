@@ -1,12 +1,13 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-07 (전체 검증·배포 완료)
+> 마지막 업데이트: 2026-07-07 (등장인물 이름 지정 기능까지 반영, 세션 종료)
 
 ## 연령대별 문체·말풍선·이야기 연결 강화 (완료·검증됨)
 - **독자 연령대 선택**: 영유아(0~5)/유치원생(5~7)/초등학생(8~13) 3단계. `create.js`에 `AgeGroupSelect` 컴포넌트 추가, `books.age_group` 컬럼(스키마+라이브 DB) 저장. `lib/openai.js`의 `AGE_GROUPS`/`getAgeGroupGuidance()`가 연령대별 어휘 난이도·문장 길이·줄거리 복잡도 지침을 `STORY_GENERATION_PROMPT`에 삽입.
 - **그림 속 말풍선**: 텍스트 생성 시 페이지별 `speech_bubble`(짧은 한국어 대사) 필드를 함께 생성 → `withSpeechBubble()`이 이미지 프롬프트에 말풍선 렌더링 지시를 결합. 실제 생성 결과 4장 모두 한글이 전혀 깨지지 않고 선명하게 렌더링되는 것을 직접 확인(gpt-image-2가 한글 텍스트 렌더링에 의외로 강함).
 - **이야기 자연스러운 연결**: `STORY_GENERATION_PROMPT`에 등장인물 이름/성격 유지, 페이지 간 인과관계("그래서"/"그러자"), 초반 복선의 후반 회수, `image_prompt`의 장소·분위기 연속성을 명시 지시. 실제 생성 결과에서 "같은 숲길에서 계속(Continuing on the same forest path)" 식으로 장면이 자연스럽게 이어지는 것 확인.
 - ⚠️ 기존 책엔 `speech_bubble` 필드가 없어 말풍선이 안 나타남 — 새로 만드는 책부터 적용.
+- **등장인물 이름 직접 지정**: `create.js` 폼에 "등장인물 이름(선택사항)" 입력란 추가(쉼표 구분, 예: "몽몽, 두리"). 비워두면 기존처럼 AI가 자동 작명. `lib/openai.js`의 `getCharacterNamesInstruction()`이 지정된 이름을 `STORY_GENERATION_PROMPT`에 삽입 — style_guide·본문·말풍선·image_prompt 전체에서 정확히 그 이름 그대로 일관 사용되는 것 실제 API로 검증 완료.
 
 ## OpenAI 모델 변경 검토 (사용자가 .env.local 직접 수정)
 - `OPENAI_TEXT_MODEL=gpt-5.5`: 실제로 유효한 추론(reasoning) 모델(`gpt-5.5-2026-04-23`로 해석됨). 단, **`max_tokens` 파라미터를 지원하지 않고 `max_completion_tokens`가 필요**함을 실제 API 호출로 확인 후 코드 수정(`gpt-4o-mini`와도 호환 확인해 통일). 텍스트 생성 시간 ~5초→~20~35초로 증가해 `create.js`의 `maxDuration`을 60→90초로 상향.
@@ -108,10 +109,11 @@
 
 ---
 
-## 🚀 배포 상태 (2026-07-07 기준)
+## 🚀 배포 상태 (2026-07-07 기준, 세션 종료 시점)
 - **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean`).
-- **Vercel**: 최신 커밋(`7c48130`)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 200 응답, alias 최신 배포 자동 추종 확인).
+- **Vercel**: 최신 커밋(`675e37e` — 등장인물 이름 지정 기능)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 200 응답).
 - **Supabase**: `books.age_group TEXT DEFAULT 'preschool'` 컬럼 추가(스키마 파일 + 라이브 DB 모두 반영, 기존 행에도 기본값 적용됨).
+- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 유저/책은 모두 정리됨.
 
 ---
 
