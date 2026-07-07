@@ -131,6 +131,9 @@
 - 신규 가입자는 크레딧 0으로 시작(무료 체험 없음). 기존 가입자 보유 크레딧은 유지됨.
 - git 커밋 co-author 트레일러: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 - 임시 스크립트는 작업 후 삭제(예: `_finish.mjs`, `_check.mjs`는 이미 정리됨).
+- ⚠️ **라이브 DB에 남아있는 테스트 데이터**: 사용자 요청으로 정리하지 않고 남겨둔 사진 기반 동화책 재현 테스트 —
+  계정 `e2e-photo-test@example.com`(비번 `Verify1234!Test`), 동화책 "레오의 비오는 날 모험"(id `fdf3844d-c1d0-4a5d-af15-bf97e8da9931`),
+  `character-photos` 버킷의 합성 테스트 사진. 실제 서비스 데이터가 아니므로 필요 없어지면 삭제해도 됨.
 
 ## 디버깅에 쓴 패턴
 - 라이브 DB 점검: `.env.local` 파싱 → `@supabase/supabase-js` 서비스 롤 키로 접속하는 `.mjs` 스크립트를
