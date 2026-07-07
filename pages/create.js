@@ -5,6 +5,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import Header from '../components/ui/Header'
 import Footer from '../components/ui/Footer'
 import Button from '../components/ui/Button'
+import PhotoUploader from '../components/photo/PhotoUploader'
 import CategorySelect from '../components/book/CategorySelect'
 import AgeGroupSelect from '../components/book/AgeGroupSelect'
 import ThemeInput from '../components/book/ThemeInput'
@@ -18,6 +19,8 @@ export default function CreatePage() {
   const [loading, setLoading] = useState(true)
 
   // Form state
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoUploading, setPhotoUploading] = useState(false)
   const [category, setCategory] = useState('')
   const [ageGroup, setAgeGroup] = useState('preschool')
   const [title, setTitle] = useState('')
@@ -59,6 +62,36 @@ export default function CreatePage() {
     checkAuth()
   }, [router])
 
+  const handlePhotoSelect = async (file) => {
+    setError('')
+    setPhotoUploading(true)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setPhotoUploading(false)
+      return
+    }
+
+    const fileName = `${user.id}/${Date.now()}-${file.name}`
+    const { error: uploadError } = await supabase.storage
+      .from('character-photos')
+      .upload(fileName, file)
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      setError('사진 업로드에 실패했습니다.')
+      setPhotoUploading(false)
+      return
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('character-photos')
+      .getPublicUrl(fileName)
+
+    setPhotoUrl(publicUrl)
+    setPhotoUploading(false)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
@@ -98,6 +131,7 @@ export default function CreatePage() {
           ageGroup,
           theme: theme.trim(),
           characterNames: characterNames.trim(),
+          characterPhotoUrl: photoUrl || undefined,
           pageCount,
         })
       })
@@ -134,16 +168,17 @@ export default function CreatePage() {
   return (
     <>
       <Head>
-        <title>동화책 만들기 | AI 동화책</title>
+        <title>나만의 동화책 만들기 | AI 동화책</title>
       </Head>
 
       <Header />
 
       <main className={styles.main}>
         <div className={styles.container}>
-          <h1 className={styles.pageTitle}>📖 동화책 만들기</h1>
+          <h1 className={styles.pageTitle}>📸 나만의 동화책 만들기</h1>
           <p className={styles.pageSubtitle}>
-            만들고 싶은 동화책을 설명해주세요. AI가 글을 쓰고 그림을 그려드릴게요!
+            만들고 싶은 동화책을 설명해주세요. 사진을 올리면 그 인물이 주인공이 되고,
+            올리지 않아도 AI가 어울리는 주인공을 만들어드려요!
           </p>
 
           {/* 크레딧 정보 */}
@@ -183,6 +218,17 @@ export default function CreatePage() {
           ) : (
             <form className={styles.form} onSubmit={handleSubmit}>
               <div className={styles.section}>
+                <label className={styles.label}>주인공 사진 (선택사항)</label>
+                <PhotoUploader onFileSelect={handlePhotoSelect} />
+                {photoUploading && <p className={styles.hint}>업로드 중...</p>}
+                {photoUrl && !photoUploading && (
+                  <p className={styles.successText}>
+                    ✅ 사진이 업로드되었습니다! 이 사진 속 인물이 주인공이 돼요.
+                  </p>
+                )}
+              </div>
+
+              <div className={styles.section}>
                 <CategorySelect value={category} onChange={setCategory} />
               </div>
 
@@ -209,7 +255,7 @@ export default function CreatePage() {
                 <Button
                   type="submit"
                   size="large"
-                  disabled={profile?.credits < 1 && !profile?.is_premium}
+                  disabled={(profile?.credits < 1 && !profile?.is_premium) || photoUploading}
                 >
                   ✨ 동화책 만들기
                 </Button>

@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterNamesInstruction } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterInstruction, describeCharacterFromPhoto } from '../../../lib/openai'
 
 // 텍스트 생성만 동기 처리하고 이미지는 별도 엔드포인트(process-image)가
 // 1장씩 처리하므로 이 함수는 짧게 끝난다. (추론 모델 사용 시 수십 초까지 걸릴 수 있어 넉넉히 잡음)
@@ -43,8 +43,9 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Insufficient credits' })
     }
 
-    // 3. 요청 데이터 파싱
-    const { title, category, theme, characterNames = '', pageCount = 10, isPhotoBased = false, characterPhotoUrl } = req.body
+    // 3. 요청 데이터 파싱 (사진은 선택사항 — characterPhotoUrl 존재 여부로 사진 기반 여부를 판단)
+    const { title, category, theme, characterNames = '', pageCount = 10, characterPhotoUrl } = req.body
+    const isPhotoBased = Boolean(characterPhotoUrl)
     const validAgeGroupIds = AGE_GROUPS.map((g) => g.id)
     const ageGroup = validAgeGroupIds.includes(req.body.ageGroup) ? req.body.ageGroup : 'preschool'
 
@@ -75,13 +76,21 @@ export default async function handler(req, res) {
 
     // 5. OpenAI로 텍스트 생성
     const openai = createOpenAI()
+
+    // 사진이 업로드된 경우, 사진 속 인물을 동화 그림체에 맞는 외형 묘사로 변환해
+    // 주인공(항상 사진 속 인물)의 style_guide에 반영한다. 분석 실패 시 빈 문자열이
+    // 반환되어 사진 없이 생성한 것처럼 자연스럽게 폴백된다.
+    const photoDescription = isPhotoBased
+      ? await describeCharacterFromPhoto(openai, characterPhotoUrl)
+      : ''
+
     const textPrompt = STORY_GENERATION_PROMPT
       .replace('{title}', title)
       .replace('{category}', category || '일반')
       .replace('{theme}', theme)
       .replace('{pageCount}', pageCount)
       .replace('{ageGroupGuidance}', getAgeGroupGuidance(ageGroup))
-      .replace('{characterNamesInstruction}', getCharacterNamesInstruction(characterNames))
+      .replace('{characterInstruction}', getCharacterInstruction({ characterNames, photoDescription }))
 
     const textResponse = await openai.chat.completions.create({
       model: TEXT_MODEL,

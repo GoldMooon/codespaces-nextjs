@@ -29,8 +29,8 @@ export default function Home() {
               나만의 특별한 동화책을 PDF로 다운로드하세요.
             </p>
             <div className={styles.heroActions}>
-              <Link href="/pricing">
-                <Button size="large">✨ 지금 시작하기</Button>
+              <Link href="/create">
+                <Button size="large">✨ 나만의 동화책 만들기</Button>
               </Link>
               <Link href="/pricing">
                 <Button variant="outline" size="large">요금제 보기</Button>
@@ -109,7 +109,7 @@ export default function Home() {
             <div className={styles.step}>
               <span className={styles.stepNumber}>3</span>
               <div className={styles.stepContent}>
-                <h3>AI가创作</h3>
+                <h3>AI가 생성</h3>
                 <p>잠시만 기다려주세요. AI가 동화책 텍스트와 그림을 생성합니다.</p>
               </div>
             </div>
@@ -130,9 +130,9 @@ export default function Home() {
             <h2>📸 사진으로 나만의 동화책 만들기</h2>
             <p>
               아이 사진, 반려동물 사진, 또는 특별한 인물의 사진을 업로드하면<br />
-              그들이 동화책 주인공이 됩니다!
+              그들이 동화책 주인공이 됩니다! (사진 첨부는 선택사항이에요)
             </p>
-            <Link href="/my/photos">
+            <Link href="/create">
               <Button variant="outline" size="large">📸 사진으로 만들기</Button>
             </Link>
           </div>
