@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterNamesInstruction } from '../../../lib/openai'
 
 // 텍스트 생성만 동기 처리하고 이미지는 별도 엔드포인트(process-image)가
 // 1장씩 처리하므로 이 함수는 짧게 끝난다. (추론 모델 사용 시 수십 초까지 걸릴 수 있어 넉넉히 잡음)
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     }
 
     // 3. 요청 데이터 파싱
-    const { title, category, theme, pageCount = 10, isPhotoBased = false, characterPhotoUrl } = req.body
+    const { title, category, theme, characterNames = '', pageCount = 10, isPhotoBased = false, characterPhotoUrl } = req.body
     const validAgeGroupIds = AGE_GROUPS.map((g) => g.id)
     const ageGroup = validAgeGroupIds.includes(req.body.ageGroup) ? req.body.ageGroup : 'preschool'
 
@@ -81,6 +81,7 @@ export default async function handler(req, res) {
       .replace('{theme}', theme)
       .replace('{pageCount}', pageCount)
       .replace('{ageGroupGuidance}', getAgeGroupGuidance(ageGroup))
+      .replace('{characterNamesInstruction}', getCharacterNamesInstruction(characterNames))
 
     const textResponse = await openai.chat.completions.create({
       model: TEXT_MODEL,

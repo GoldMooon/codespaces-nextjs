@@ -22,6 +22,7 @@ export default function CreatePage() {
   const [ageGroup, setAgeGroup] = useState('preschool')
   const [title, setTitle] = useState('')
   const [theme, setTheme] = useState('')
+  const [characterNames, setCharacterNames] = useState('')
   const [pageCount, setPageCount] = useState(10)
 
   // Generation state
@@ -96,6 +97,7 @@ export default function CreatePage() {
           category,
           ageGroup,
           theme: theme.trim(),
+          characterNames: characterNames.trim(),
           pageCount,
         })
       })
@@ -194,6 +196,8 @@ export default function CreatePage() {
                   setTitle={setTitle}
                   theme={theme}
                   setTheme={setTheme}
+                  characterNames={characterNames}
+                  setCharacterNames={setCharacterNames}
                   pageCount={pageCount}
                   setPageCount={setPageCount}
                 />

@@ -1,7 +1,7 @@
 import styles from '../../styles/components/ThemeInput.module.css'
 import Input, { Textarea } from '../ui/Input'
 
-export default function ThemeInput({ title, setTitle, theme, setTheme, pageCount, setPageCount }) {
+export default function ThemeInput({ title, setTitle, theme, setTheme, characterNames, setCharacterNames, pageCount, setPageCount }) {
   return (
     <div className={styles.container}>
       <Input
@@ -19,6 +19,13 @@ export default function ThemeInput({ title, setTitle, theme, setTheme, pageCount
         onChange={(e) => setTheme(e.target.value)}
         rows={4}
         required
+      />
+
+      <Input
+        label="등장인물 이름 (선택사항)"
+        placeholder="예: 토리, 폭시 (쉼표로 구분, 비워두면 AI가 어울리는 이름을 지어드려요)"
+        value={characterNames}
+        onChange={(e) => setCharacterNames(e.target.value)}
       />
 
       <div className={styles.sliderContainer}>
