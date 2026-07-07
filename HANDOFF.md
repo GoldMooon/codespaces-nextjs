@@ -1,6 +1,14 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-07 (등장인물 이름 지정 기능까지 반영, 세션 종료)
+> 마지막 업데이트: 2026-07-08 (나만의 동화책 만들기 통합, 세션 종료)
+
+## 나만의 동화책 만들기(사진 첨부 선택) 통합 (완료·검증됨)
+- 기존 `/my/photos`는 사진을 업로드해도 실제 생성에 전혀 반영 안 되는 **미완성 기능**이었음(`isPhotoBased`/`character_photo_url`이 DB 저장만 되고 프롬프트에는 미사용, `CHARACTER_IMAGE_PROMPT`도 죽은 코드). `/create` 하나로 통합해 실제로 동작하게 구현.
+- `/create` 폼에 사진 업로드 섹션 추가(**선택사항** — 미첨부 시 검증 통과, 기존처럼 AI가 자유 생성). `/my/photos`는 `/create`로 리다이렉트하는 얇은 페이지로 교체.
+- **사진 속 인물 = 항상 주인공**으로 확정(사용자 확인 완료 — 현재 1장만 업로드 가능해 역할 선택 UI는 불필요하다고 판단).
+- `lib/openai.js`의 `describeCharacterFromPhoto()`가 gpt-4o-mini 비전으로 사진을 분석해 동화 삽화 스타일 외형 묘사(나이대·머리색/스타일·눈색·액세서리·분위기)를 생성 — 분석 실패 시 빈 문자열 반환해 사진 없는 것처럼 자연스럽게 폴백. `getCharacterInstruction()`이 이 묘사 + 지정된 이름(첫 번째)을 결합해 style_guide 주인공 외형에 반영.
+- **실제 검증**: 빨간 곱슬머리·주근깨·동그란 안경·노란 우비 소년 사진(gpt-image-2로 합성 생성)을 업로드해 "레오"라는 이름으로 책 생성 → style_guide와 실제 이미지 5장(표지+4페이지) 전부에서 사진 속 특징이 정확히 재현되는 것을 육안으로 직접 확인.
+- ⚠️ 텍스트 생성 시간: 사진 분석(vision) + gpt-5.5(추론모델) 조합이 최대 ~58초까지 걸림 — `create.js`의 `maxDuration: 90초` 안에는 들지만 여유가 줄어듦. 만약 타임아웃이 잦아지면 vision 분석 모델을 더 가벼운 것으로 바꾸거나 maxDuration을 더 올리는 것 검토.
 
 ## 연령대별 문체·말풍선·이야기 연결 강화 (완료·검증됨)
 - **독자 연령대 선택**: 영유아(0~5)/유치원생(5~7)/초등학생(8~13) 3단계. `create.js`에 `AgeGroupSelect` 컴포넌트 추가, `books.age_group` 컬럼(스키마+라이브 DB) 저장. `lib/openai.js`의 `AGE_GROUPS`/`getAgeGroupGuidance()`가 연령대별 어휘 난이도·문장 길이·줄거리 복잡도 지침을 `STORY_GENERATION_PROMPT`에 삽입.
@@ -104,16 +112,15 @@
      3) 운영용 웹훅 엔드포인트 신규 등록(`https://mytale-ai.vercel.app/api/payment/webhook`) →
         새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
      4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
-2. (선택) 사진 기반 동화(`isPhotoBased`/`character_photo_url`) 기능 점검 — 코드 경로는 있으나 미검증.
-3. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
+2. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
 ---
 
-## 🚀 배포 상태 (2026-07-07 기준, 세션 종료 시점)
+## 🚀 배포 상태 (2026-07-08 기준, 세션 종료 시점)
 - **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean`).
-- **Vercel**: 최신 커밋(`675e37e` — 등장인물 이름 지정 기능)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 200 응답).
-- **Supabase**: `books.age_group TEXT DEFAULT 'preschool'` 컬럼 추가(스키마 파일 + 라이브 DB 모두 반영, 기존 행에도 기본값 적용됨).
-- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 유저/책은 모두 정리됨.
+- **Vercel**: 최신 커밋(`ebab580` — 나만의 동화책 만들기 통합)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app/create` 200 응답).
+- **Supabase**: 이번 세션은 DB 스키마 변경 없음(코드/프롬프트 변경만). `character-photos` 버킷 존재·public 확인.
+- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 유저/책/사진은 모두 정리됨.
 
 ---
 
