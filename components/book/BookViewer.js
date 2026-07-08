@@ -6,6 +6,7 @@ import Button from '../ui/Button'
 export default function BookViewer({ book }) {
   const [currentPage, setCurrentPage] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const [downloading, setDownloading] = useState(false)
 
   const pages = book.content?.pages || []
   const totalPages = pages.length
@@ -28,6 +29,7 @@ export default function BookViewer({ book }) {
   }
 
   const handleDownload = async () => {
+    setDownloading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
@@ -58,6 +60,8 @@ export default function BookViewer({ book }) {
     } catch (error) {
       console.error('Download failed:', error)
       alert(`PDF 다운로드에 실패했습니다: ${error.message}`)
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -132,7 +136,13 @@ export default function BookViewer({ book }) {
           </Button>
         </div>
 
-        <Button variant="primary" size="small" onClick={handleDownload}>
+        <Button
+          variant="primary"
+          size="small"
+          onClick={handleDownload}
+          loading={downloading}
+          disabled={downloading}
+        >
           📥 PDF 다운로드
         </Button>
       </div>
