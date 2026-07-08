@@ -1,6 +1,13 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-08 (PDF 호흡 단위 줄바꿈 추가)
+> 마지막 업데이트: 2026-07-08 (읽기 화면 배경음악 추가)
+
+## 읽기 화면 배경음악(BGM) 추가 (완료·검증됨)
+- 요청: 저작권 문제 없이 동화책 읽는 화면에 BGM을 넣고 싶음 + 이야기 생성에 영향 준다면 쉽게 끌 수 있는 구조로.
+- 접근: 외부 음원(mp3 등)을 전혀 쓰지 않고 **브라우저 Web Audio API로 그때그때 화음을 직접 합성**해 재생(`lib/bgm.js`의 `AmbientPlayer`). 어디서도 가져온 음원이 없으므로 저작권 문제가 원천적으로 발생할 수 없음. 카테고리(animals/fantasy/adventure/friendship/education/scifi)별로 다른 화음(주파수 조합)을 매핑해 은은한 분위기 차이를 줌 — 예: adventure는 D장조 4화음, fantasy는 A단조.
+- 완전 격리: `lib/bgm.js` + `components/book/BgmToggle.js` 2개 파일 모두 텍스트/이미지 생성 파이프라인(`lib/openai.js`, `pages/api/books/*`)과 전혀 연결 안 됨. `BookViewer.js`의 통합 지점은 `NEXT_PUBLIC_ENABLE_BGM` 환경변수 + 한 줄짜리 조건부 렌더링(`{BGM_ENABLED && <BgmToggle .../>}`) 하나뿐 — 문제 생기면 env를 `false`로 바꾸거나 그 줄만 지우면 즉시 끌 수 있음.
+- 검증: Playwright로 `AudioContext`/`OscillatorNode` 호출을 직접 후킹해 카테고리에 맞는 화음(음 4개 + LFO 4개 = 오실레이터 8개)이 정확히 생성·재생(`state: 'running'`)되고, 정지 시 8개 전부 정상 종료되는 것 확인. 실제 프로덕션에서도 버튼 클릭 → 재생 상태 전환 확인.
+- ⚠️ **NEXT_PUBLIC_ 환경변수는 빌드 시점에 값이 고정됨** — Vercel env를 바꿔도 재배포(재빌드) 전까지는 반영 안 됨. 로컬 `next dev`도 Turbopack 캐시 때문에 값 변경이 바로 반영 안 될 수 있어(재현됨), 확실히 확인하려면 `.next` 삭제 후 `next build`로 새로 빌드해서 테스트할 것.
 
 ## PDF 텍스트 호흡 단위 줄바꿈 (완료·검증됨)
 - 요청: PDF 본문 텍스트를 유치원 선생님이 아이에게 읽어주듯 자연스러운 호흡 단위로 줄바꿈.
