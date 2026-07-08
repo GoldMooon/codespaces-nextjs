@@ -1,6 +1,13 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-08 (나만의 동화책 만들기 통합, 세션 종료)
+> 마지막 업데이트: 2026-07-08 (PDF 폰트 서브셋 버그 수정)
+
+## PDF 다운로드 글자 깨짐 버그 수정 (완료·검증됨)
+- 증상: 사용자가 PDF를 다운로드하면 글자가 전부 깨져 보임(제목·본문 텍스트 대부분 사라지거나 이상한 조각만 남음).
+- 원인: `lib/pdf-generator.js`에서 Pretendard 폰트를 `pdfDoc.embedFont(bytes, { subset: true })`로 임베드하고 있었는데, **pdf-lib+fontkit의 한글 서브셋 처리에 버그**가 있어 `pdf-parse`로 텍스트를 추출하면 정상인데(ToUnicode 매핑은 살아있음) 실제로 화면에 그려지는 글리프는 대부분 사라지는 문제였음.
+- ⚠️ **검증 방법에 대한 교훈**: 지난 세션에 이 폰트 임베드 기능을 넣을 때 `pdf-parse`의 텍스트 추출(`getText()`)만으로 검증하고 "정상"이라 판단했었는데, 이는 실제 화면 렌더링을 보증하지 않음이 드러남. 이번엔 `pdf-parse`의 `getScreenshot()`으로 실제 페이지를 이미지로 렌더링해 육안으로 확인하는 방식으로 재발 방지.
+- 해결: `{ subset: true }` 옵션 제거, 폰트 전체(Pretendard-Regular.ttf, Pretendard-Bold.ttf)를 그대로 임베드. PDF 파일 크기가 조금 커짐(폰트당 서브셋 대비 몇 MB 증가하지만, 이미 이미지가 큰 편이라 체감 차이 적음).
+- 로컬 + 실제 프로덕션(`https://mytale-ai.vercel.app`) 양쪽에서 실제 PDF를 받아 화면 렌더링까지 확인 완료.
 
 ## 나만의 동화책 만들기(사진 첨부 선택) 통합 (완료·검증됨)
 - 기존 `/my/photos`는 사진을 업로드해도 실제 생성에 전혀 반영 안 되는 **미완성 기능**이었음(`isPhotoBased`/`character_photo_url`이 DB 저장만 되고 프롬프트에는 미사용, `CHARACTER_IMAGE_PROMPT`도 죽은 코드). `/create` 하나로 통합해 실제로 동작하게 구현.
@@ -78,8 +85,9 @@
 - 문제 1: 모바일에서 이전/다음 버튼이 안 보임 — `.nav`/`.controls` 두 바가 둘 다 `position:fixed; left:50%; transform:translateX(-50%)`라 좁은 화면에서 서로 겹쳐 클릭을 가로챔(같은 원인으로 PDF 버튼 텍스트도 세로로 줄바꿈됨). → 모바일 미디어쿼리에서 두 바를 `position:static`인 일반 흐름 요소로 전환(`styles/components/BookViewer.module.css`).
 - 문제 2: `goToNext`의 off-by-one으로 마지막 페이지를 "다음" 버튼으로 절대 볼 수 없었음(데스크톱 전용 썸네일로만 가능) → 가드 조건 수정(`components/book/BookViewer.js`).
 - 문제 3: PDF 다운로드가 `.json` + `{"error":"Unauthorized"}`로 저장됨 — `handleDownload`가 인증 헤더 없이 fetch → 401을 그대로 blob 저장. Authorization 헤더 추가.
-- 문제 4 (3을 고치고 나서 드러난 2차 버그): pdf-lib의 `StandardFonts`는 WinAnsi 인코딩만 지원해 한글 포함 모든 실제 책에서 PDF 생성이 500으로 실패하고 있었음. **Pretendard 폰트**(OFL 라이선스, `public/fonts/Pretendard-{Regular,Bold}.ttf`)를 `@pdf-lib/fontkit`으로 임베드(`subset:true`)하도록 교체(`lib/pdf-generator.js`). OTF/CFF는 이 fontkit 버전에서 파싱 버그로 실패하니 **반드시 TTF**를 써야 함.
+- 문제 4 (3을 고치고 나서 드러난 2차 버그): pdf-lib의 `StandardFonts`는 WinAnsi 인코딩만 지원해 한글 포함 모든 실제 책에서 PDF 생성이 500으로 실패하고 있었음. **Pretendard 폰트**(OFL 라이선스, `public/fonts/Pretendard-{Regular,Bold}.ttf`)를 `@pdf-lib/fontkit`으로 임베드하도록 교체(`lib/pdf-generator.js`). OTF/CFF는 이 fontkit 버전에서 파싱 버그로 실패하니 **반드시 TTF**를 써야 함.
 - 검증: Playwright로 실제 로그인→모바일 뷰포트→페이지 이동→PDF 다운로드까지 end-to-end 확인, `pdf-parse`로 PDF 안의 한글 텍스트가 정확히 추출되는 것까지 확인.
+- ⚠️ **후속 버그(2026-07-08에 발견·수정)**: 이때 함께 켰던 `{ subset: true }` 옵션이 실제 화면 렌더링을 깨뜨리는 별도 버그였음 — 상세 내용은 위 "PDF 다운로드 글자 깨짐 버그 수정" 섹션 참고.
 
 ### OpenAI 모델/화질 설정값화 (완료)
 - `OPENAI_TEXT_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_QUALITY` 환경변수 추가(`.env.local` + Vercel production).
