@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import styles from '../../styles/components/BookViewer.module.css'
 import Button from '../ui/Button'
+import BgmToggle from './BgmToggle'
+
+// 배경음악 기능 스위치. 이야기 생성과는 무관한 순수 읽기 화면 기능이지만,
+// 문제가 생기면 이 값을 false로 바꾸거나(.env.local에 NEXT_PUBLIC_ENABLE_BGM=false)
+// 아래 <BgmToggle> 사용부만 주석 처리하면 다른 기능에 영향 없이 바로 끌 수 있다.
+const BGM_ENABLED = process.env.NEXT_PUBLIC_ENABLE_BGM !== 'false'
 
 export default function BookViewer({ book }) {
   const [currentPage, setCurrentPage] = useState(0)
@@ -135,6 +141,8 @@ export default function BookViewer({ book }) {
             +
           </Button>
         </div>
+
+        {BGM_ENABLED && <BgmToggle category={book.category} />}
 
         <Button
           variant="primary"
