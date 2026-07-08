@@ -17,6 +17,8 @@
   justify-content: center;
   max-width: 600px;
   text-align: center;
+  transition: transform 0.3s ease;
+  transform-origin: top center;
   animation: fadeIn 0.5s ease;
 }
 
@@ -31,12 +33,36 @@
   }
 }
 
+/* 표지/본문 이미지 + 배경음악 배지를 함께 담는 기준 컨테이너.
+   position:relative + 실제 이미지 폭에 맞춘 max-width라서, 배지가
+   항상 "이미지의" 우상단 모서리에 붙고 페이지를 넘겨도 위치가 안 흔들린다. */
+.imageFrame {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.imageFrameCover {
+  max-width: 400px;
+  margin-bottom: 32px;
+}
+
+.imageFramePage {
+  max-width: 600px;
+}
+
+.bgmCorner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+}
+
 .coverImage {
   width: 100%;
-  max-width: 400px;
+  display: block;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  margin-bottom: 32px;
 }
 
 .coverTitle {
@@ -70,7 +96,7 @@
 
 .pageImage {
   width: 100%;
-  max-width: 600px;
+  display: block;
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
@@ -84,6 +110,11 @@
   margin: 0;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* 텍스트를 호흡 단위(쉼표·마침표 등) 구절마다 한 줄씩 보여준다 */
+.breathLine {
+  display: block;
 }
 
 .nav {

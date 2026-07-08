@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { splitIntoBreathUnits } from '../../lib/textFormat'
+import { AmbientPlayer } from '../../lib/bgm'
 import styles from '../../styles/components/BookViewer.module.css'
 import Button from '../ui/Button'
 import BgmToggle from './BgmToggle'
@@ -13,9 +15,32 @@ export default function BookViewer({ book }) {
   const [currentPage, setCurrentPage] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [downloading, setDownloading] = useState(false)
+  const [bgmPlaying, setBgmPlaying] = useState(false)
+  const bgmPlayerRef = useRef(null)
 
   const pages = book.content?.pages || []
   const totalPages = pages.length
+
+  // BGM 재생 상태는 여기(BookViewer)에 둬서, 표지 ↔ 본문 페이지를 넘나들며
+  // <BgmToggle>이 다시 그려져도 음악 자체는 끊기지 않는다.
+  useEffect(() => {
+    if (!BGM_ENABLED) return
+    bgmPlayerRef.current = new AmbientPlayer()
+    return () => {
+      bgmPlayerRef.current?.stop()
+    }
+  }, [])
+
+  const toggleBgm = () => {
+    if (!bgmPlayerRef.current) return
+    if (bgmPlaying) {
+      bgmPlayerRef.current.stop()
+      setBgmPlaying(false)
+    } else {
+      bgmPlayerRef.current.start(book.category)
+      setBgmPlaying(true)
+    }
+  }
 
   const goToPrev = () => {
     if (currentPage > 0) {
@@ -75,14 +100,21 @@ export default function BookViewer({ book }) {
     <div className={styles.container} tabIndex={0} onKeyDown={handleKeyDown}>
       {/* 표지 */}
       {currentPage === 0 && (
-        <div className={styles.cover}>
-          {book.cover_image_url && (
-            <img
-              src={book.cover_image_url}
-              alt={book.title}
-              className={styles.coverImage}
-            />
-          )}
+        <div className={styles.cover} style={{ transform: `scale(${zoom})` }}>
+          <div className={`${styles.imageFrame} ${styles.imageFrameCover}`}>
+            {book.cover_image_url && (
+              <img
+                src={book.cover_image_url}
+                alt={book.title}
+                className={styles.coverImage}
+              />
+            )}
+            {BGM_ENABLED && (
+              <div className={styles.bgmCorner}>
+                <BgmToggle playing={bgmPlaying} onToggle={toggleBgm} />
+              </div>
+            )}
+          </div>
           <h1 className={styles.coverTitle}>{book.title}</h1>
           {book.category && (
             <p className={styles.coverCategory}>{book.category}</p>
@@ -94,15 +126,24 @@ export default function BookViewer({ book }) {
       {/* 본문 페이지 */}
       {currentPage > 0 && pages[currentPage - 1] && (
         <div className={styles.page} style={{ transform: `scale(${zoom})` }}>
-          {pages[currentPage - 1].image_url && (
-            <img
-              src={pages[currentPage - 1].image_url}
-              alt={`Page ${currentPage}`}
-              className={styles.pageImage}
-            />
-          )}
+          <div className={`${styles.imageFrame} ${styles.imageFramePage}`}>
+            {pages[currentPage - 1].image_url && (
+              <img
+                src={pages[currentPage - 1].image_url}
+                alt={`Page ${currentPage}`}
+                className={styles.pageImage}
+              />
+            )}
+            {BGM_ENABLED && (
+              <div className={styles.bgmCorner}>
+                <BgmToggle playing={bgmPlaying} onToggle={toggleBgm} />
+              </div>
+            )}
+          </div>
           <p className={styles.pageText}>
-            {pages[currentPage - 1].text}
+            {splitIntoBreathUnits(pages[currentPage - 1].text).map((line, i) => (
+              <span key={i} className={styles.breathLine}>{line}</span>
+            ))}
           </p>
         </div>
       )}
@@ -141,8 +182,6 @@ export default function BookViewer({ book }) {
             +
           </Button>
         </div>
-
-        {BGM_ENABLED && <BgmToggle category={book.category} />}
 
         <Button
           variant="primary"
