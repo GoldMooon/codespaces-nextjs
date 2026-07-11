@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     }
 
     // 3. 요청 데이터 파싱 (사진은 선택사항 — characterPhotoUrl 존재 여부로 사진 기반 여부를 판단)
-    const { title, category, theme, characterNames = '', pageCount = 10, characterPhotoUrl } = req.body
+    const { title, category, theme, characterNames = '', pageCount = 24, characterPhotoUrl } = req.body
     const isPhotoBased = Boolean(characterPhotoUrl)
     const validAgeGroupIds = AGE_GROUPS.map((g) => g.id)
     const ageGroup = validAgeGroupIds.includes(req.body.ageGroup) ? req.body.ageGroup : 'preschool'

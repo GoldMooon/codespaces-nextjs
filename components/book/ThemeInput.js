@@ -34,15 +34,16 @@ export default function ThemeInput({ title, setTitle, theme, setTheme, character
         </label>
         <input
           type="range"
-          min="5"
-          max="20"
+          min="24"
+          max="40"
+          step="2"
           value={pageCount}
           onChange={(e) => setPageCount(parseInt(e.target.value))}
           className={styles.slider}
         />
         <div className={styles.sliderLabels}>
-          <span>5장</span>
-          <span>20장</span>
+          <span>24장</span>
+          <span>40장</span>
         </div>
       </div>
     </div>

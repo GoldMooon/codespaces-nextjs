@@ -5,11 +5,31 @@ import { AmbientPlayer } from '../../lib/bgm'
 import styles from '../../styles/components/BookViewer.module.css'
 import Button from '../ui/Button'
 import BgmToggle from './BgmToggle'
+import PhysicalOrderModal from './PhysicalOrderModal'
 
 // 배경음악 기능 스위치. 이야기 생성과는 무관한 순수 읽기 화면 기능이지만,
 // 문제가 생기면 이 값을 false로 바꾸거나(.env.local에 NEXT_PUBLIC_ENABLE_BGM=false)
 // 아래 <BgmToggle> 사용부만 주석 처리하면 다른 기능에 영향 없이 바로 끌 수 있다.
 const BGM_ENABLED = process.env.NEXT_PUBLIC_ENABLE_BGM !== 'false'
+
+const PHYSICAL_ORDER_STATUS_LABEL = {
+  pending_payment: '결제 대기중',
+  paid: '결제완료 · 제작 준비중',
+  processing: '인쇄소 접수 처리중',
+  submitted: '인쇄소 접수완료',
+  confirmed: '제작확정',
+  in_production: '제작중',
+  production_complete: '제작완료 · 발송대기',
+  shipped: '발송완료',
+  delivered: '배송완료',
+  cancelled: '취소됨',
+  failed: '처리 실패 (문의 필요)',
+}
+
+// SweetBook SQUAREBOOK_HC 최소 인쇄 조건: 24~130페이지, 짝수
+function isEligibleForPrint(pages) {
+  return pages.length >= 24 && pages.length <= 130 && pages.length % 2 === 0
+}
 
 export default function BookViewer({ book }) {
   const [currentPage, setCurrentPage] = useState(0)
@@ -17,9 +37,56 @@ export default function BookViewer({ book }) {
   const [downloading, setDownloading] = useState(false)
   const [bgmPlaying, setBgmPlaying] = useState(false)
   const bgmPlayerRef = useRef(null)
+  const [showOrderModal, setShowOrderModal] = useState(false)
+  const [physicalOrder, setPhysicalOrder] = useState(null)
 
   const pages = book.content?.pages || []
   const totalPages = pages.length
+  const printEligible = isEligibleForPrint(pages)
+
+  // 이 책의 실물 주문 상태를 조회하고, 진행중이면 주기적으로 최신 상태를 반영한다.
+  useEffect(() => {
+    let cancelled = false
+    let timer
+
+    const fetchOrder = async () => {
+      const { data } = await supabase
+        .from('physical_orders')
+        .select('*')
+        .eq('book_id', book.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (cancelled) return
+      setPhysicalOrder(data || null)
+
+      // 결제 완료 후 아직 SweetBook 접수 전이면 처리를 트리거(멱등 호출이라 여러 번 불러도 안전)
+      if (data?.status === 'paid') {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          fetch('/api/payment/physical-order/process', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ physicalOrderId: data.id }),
+          }).catch(() => {})
+        }
+      }
+
+      if (data && ['paid', 'processing'].includes(data.status)) {
+        timer = setTimeout(fetchOrder, 4000)
+      }
+    }
+
+    fetchOrder()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [book.id])
 
   // BGM 재생 상태는 여기(BookViewer)에 둬서, 표지 ↔ 본문 페이지를 넘나들며
   // <BgmToggle>이 다시 그려져도 음악 자체는 끊기지 않는다.
@@ -186,7 +253,22 @@ export default function BookViewer({ book }) {
         >
           📥 PDF 다운로드
         </Button>
+
+        {printEligible && !physicalOrder && (
+          <Button variant="outline" size="small" onClick={() => setShowOrderModal(true)}>
+            🎁 실물 책으로 받기
+          </Button>
+        )}
+
+        {physicalOrder && (
+          <span className={styles.pageIndicator} title={physicalOrder.error_message || ''}>
+            📦 {PHYSICAL_ORDER_STATUS_LABEL[physicalOrder.status] || physicalOrder.status}
+            {physicalOrder.tracking_number ? ` (${physicalOrder.tracking_carrier || ''} ${physicalOrder.tracking_number})` : ''}
+          </span>
+        )}
       </div>
+
+      <PhysicalOrderModal book={book} isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} />
 
       {/* 슬라이드 미리보기 */}
       <div className={styles.thumbnails}>

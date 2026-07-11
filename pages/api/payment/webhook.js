@@ -45,6 +45,22 @@ export default async function handler(req, res) {
       case 'order.paid': {
         if (!userId) break
 
+        if (productType === 'physical_book') {
+          // 실물 책 주문은 payments 테이블(subscription/credits 전용 CHECK 제약)이 아니라
+          // physical_orders 자체가 결제 기록을 겸한다. SweetBook 연동(PDF 생성·업로드·주문 생성)은
+          // 무거운 작업이라 여기서 동기로 하지 않고, 결제 완료 페이지에서 별도 엔드포인트
+          // (/api/payment/physical-order/process)를 호출해 처리한다.
+          const physicalOrderId = metadata.physicalOrderId
+          if (physicalOrderId) {
+            await supabase
+              .from('physical_orders')
+              .update({ status: 'paid', polar_payment_id: data.id })
+              .eq('id', physicalOrderId)
+              .eq('status', 'pending_payment')
+          }
+          break
+        }
+
         if (productType === 'credits') {
           // 크레딧 추가
           const creditsToAdd = parseInt(metadata.credits, 10) || 10

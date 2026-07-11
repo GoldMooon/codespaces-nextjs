@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS books (
   content JSONB,                      -- { style_guide, pages: [{text, image_url, image_prompt, speech_bubble}] }
   cover_image_url TEXT,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'generating', 'completed', 'failed')),
-  page_count INTEGER DEFAULT 10,
+  page_count INTEGER DEFAULT 24,
   is_photo_based BOOLEAN DEFAULT false,
   character_photo_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -64,6 +64,43 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 5. physical_orders 테이블 (실물 책 인쇄·배송 주문 — SweetBook Book Print API 연동)
+CREATE TABLE IF NOT EXISTS physical_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  book_id UUID REFERENCES books(id) ON DELETE CASCADE NOT NULL,
+  status TEXT DEFAULT 'pending_payment' CHECK (status IN (
+    'pending_payment',   -- Polar 체크아웃 생성됨, 결제 대기
+    'paid',               -- Polar 결제 완료, SweetBook 연동 대기
+    'processing',         -- 인쇄용 PDF 생성 + SweetBook 업로드 중
+    'submitted',          -- SweetBook 주문 생성 완료 (PAID/PDF_READY)
+    'confirmed',          -- 제작확정 (CONFIRMED)
+    'in_production',      -- 제작중
+    'production_complete',-- 전체제작완료
+    'shipped',             -- 발송완료
+    'delivered',           -- 배송완료
+    'cancelled',            -- 취소
+    'failed'                -- SweetBook 연동 실패 (내부 오류)
+  )),
+  recipient_name TEXT,
+  recipient_phone TEXT,
+  postal_code TEXT,
+  address1 TEXT,
+  address2 TEXT,
+  shipping_memo TEXT,
+  polar_checkout_id TEXT,
+  polar_payment_id TEXT,
+  amount INTEGER,
+  currency TEXT DEFAULT 'KRW',
+  sweetbook_book_uid TEXT,
+  sweetbook_order_uid TEXT,
+  tracking_carrier TEXT,
+  tracking_number TEXT,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- ===========================================
 -- Row Level Security (RLS) 정책
 -- ===========================================
@@ -72,6 +109,7 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE books ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE physical_orders ENABLE ROW LEVEL SECURITY;
 
 -- profiles: 본인만 접근
 DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
@@ -104,6 +142,10 @@ CREATE POLICY "Users can view own payments" ON payments FOR SELECT USING (auth.u
 DROP POLICY IF EXISTS "Users can view own subscription" ON subscriptions;
 CREATE POLICY "Users can view own subscription" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
 
+-- physical_orders: 본인만 접근 (생성/상태 갱신은 서버가 service role 키로 처리 — RLS 우회)
+DROP POLICY IF EXISTS "Users can view own physical orders" ON physical_orders;
+CREATE POLICY "Users can view own physical orders" ON physical_orders FOR SELECT USING (auth.uid() = user_id);
+
 -- ===========================================
 -- 자동 업데이트 트리거
 -- ===========================================
@@ -126,6 +168,10 @@ CREATE TRIGGER update_books_updated_at BEFORE UPDATE ON books
 
 DROP TRIGGER IF EXISTS update_subscriptions_updated_at ON subscriptions;
 CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON subscriptions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_physical_orders_updated_at ON physical_orders;
+CREATE TRIGGER update_physical_orders_updated_at BEFORE UPDATE ON physical_orders
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ===========================================

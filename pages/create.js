@@ -26,7 +26,7 @@ export default function CreatePage() {
   const [title, setTitle] = useState('')
   const [theme, setTheme] = useState('')
   const [characterNames, setCharacterNames] = useState('')
-  const [pageCount, setPageCount] = useState(10)
+  const [pageCount, setPageCount] = useState(24)
 
   // Generation state
   const [generating, setGenerating] = useState(false)
