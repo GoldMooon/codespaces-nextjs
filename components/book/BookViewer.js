@@ -54,11 +54,6 @@ export default function BookViewer({ book }) {
     }
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'ArrowLeft') goToPrev()
-    if (e.key === 'ArrowRight') goToNext()
-  }
-
   const handleDownload = async () => {
     setDownloading(true)
     try {
@@ -97,7 +92,7 @@ export default function BookViewer({ book }) {
   }
 
   return (
-    <div className={styles.container} tabIndex={0} onKeyDown={handleKeyDown}>
+    <div className={styles.container}>
       {/* 표지 */}
       {currentPage === 0 && (
         <div className={styles.cover} style={{ transform: `scale(${zoom})` }}>
@@ -119,7 +114,6 @@ export default function BookViewer({ book }) {
           {book.category && (
             <p className={styles.coverCategory}>{book.category}</p>
           )}
-          <p className={styles.coverHint}>← → 키를 눌러 페이지를 넘기세요</p>
         </div>
       )}
 
