@@ -1,6 +1,21 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-11 (방향키 페이지 넘김 제거)
+> 마지막 업데이트: 2026-07-11 (SweetBook 실물 책 인쇄·배송 기능 추가)
+
+## SweetBook 실물 책 인쇄·배송 기능 추가 (핵심 플로우 검증 완료, 웹훅만 보류)
+- 요청: 완성된 동화책을 SweetBook Book Print API로 실물 인쇄해 배송받는 기능. "실물 책으로 받기" 버튼 → 주소 입력 → Polar 결제("책 제작 배송권") → 결제 확인 후 SweetBook에 자동 접수.
+- **판형**: `SQUAREBOOK_HC`(고화질 스퀘어북 하드커버, 243×248mm, PUR제본, 24~130p) 고정.
+- **페이지 수 정책 변경**: SweetBook 최소 인쇄 규격(24p)을 맞추기 위해 **사이트 전체 신규 동화책의 페이지 수 기본값을 5~20장 → 24~40장(짝수)으로 변경**(`components/book/ThemeInput.js` 슬라이더, `pages/create.js`/`pages/api/books/create.js` 기본값, `supabase-schema.sql` `books.page_count` 기본값, 라이브 DB도 반영). 기존에 생성된 책(4~10페이지)은 인쇄 조건 미달이라 실물 주문 버튼이 안 뜨는 게 정상.
+- **인쇄용 PDF는 화면용과 완전히 별도 경로**: `lib/print-pdf-generator.js`. SweetBook 사이즈 계산 API(`GET /book-specs/{uid}/calculated-size?pages=N`)로 매번 정확한 mm 치수를 받아와 그대로 캔버스 크기로 사용(하드코딩 금지 — 페이지 수 구간에 따라 표지 너비가 바뀜). 표지는 뒤표지+책등+앞표지 펼침면 1장, 내지는 페이지당 1장. 이미지는 pdf-lib 클리핑(`pushGraphicsState`/`rectangle`/`clip`)으로 도련까지 꽉 채우는 object-cover 크롭, 텍스트는 그 위에 반투명 캡션 바로 오버레이(사용자가 "그림 안에 AI가 직접 글자를 그리는 방식"이 아니라 "우리 코드가 이미지 위에 텍스트를 얹는 방식"을 명시적으로 선택함 — AI 이미지 모델의 한글 텍스트 렌더링 신뢰 불가 때문).
+- **`lib/sweetbook.js`**: SweetBook API 클라이언트. 책 생성(PDF_UPLOAD)/표지·내지 PDF 업로드/최종화/주문 생성/조회/웹훅 서명검증(HMAC-SHA256, `sha256=` + `{timestamp}.{body}`). Sandbox/Live는 `SWEETBOOK_SERVER`(base URL)만 다르고 인터페이스 동일.
+- **결제·주문 플로우**: `pages/api/payment/physical-order/create.js`(주소 검증 + `physical_orders` pending 행 생성 + Polar 체크아웃) → Polar 웹훅(`pages/api/payment/webhook.js`의 `productType==='physical_book'` 분기, `payments` 테이블 CHECK 제약 때문에 일반 결제 기록엔 안 남기고 `physical_orders.status='paid'`만 갱신) → `pages/api/payment/physical-order/process.js`(PDF 생성 + SweetBook 책 생성·업로드·최종화·주문 생성, 전 구간 Idempotency-Key/409-tolerant로 재시도 안전) → `pages/payment/physical-success.js`(결제 후 리다이렉트, process 엔드포인트를 폴링 호출).
+- **DB**: `physical_orders` 테이블 신규(주소, 상태, `sweetbook_book_uid`/`sweetbook_order_uid`, 트래킹 정보, Polar 연결). 상태값: `pending_payment→paid→processing→submitted→confirmed→in_production→production_complete→shipped→delivered`(+`cancelled`/`failed`).
+- **UI**: `components/book/PhysicalOrderModal.js`(주소 입력 모달), `BookViewer.js`에 페이지 수 24~130짝수 조건 만족 시 "🎁 실물 책으로 받기" 버튼 + 주문 상태 뱃지(4초 간격 폴링, `paid` 상태면 자동으로 process 엔드포인트 재호출).
+- **Polar 상품**: Sandbox에 "책 제작 배송권" 신규 생성 완료(`POLAR_PHYSICAL_BOOK_PRODUCT_ID=2f4cbcf0-1c79-4fee-a385-ad739aa07da1`, ₩39,000 정액 — SweetBook 원가(24~40p 기준 상품+배송+VAT 약 2.5~3만원) 대비 마진 있음, 필요시 파트너 포털에서 가격 조정 가능).
+- **실제 SweetBook Sandbox E2E 검증 완료**(합성 테스트 이미지 24페이지, 실제 고객 데이터 미사용): 인쇄용 PDF 생성 → 책 생성 → 표지/내지 업로드(`valid:true`, 경고 없음) → 최종화 → 주문 생성(`PDF_READY`, ₩15,327 정상 차감) → SweetBook이 실제 저장한 PDF를 재다운로드해 이미지 렌더링까지 육안 확인 완료 → 테스트 주문은 취소·환불로 정리함. Sandbox 충전금 ₩50,000 충전해둠(테스트용, 실제 비용 없음).
+- ⚠️ **웹훅 미완료**: `PUT /webhooks/config`(웹훅 등록 API)가 SweetBook Sandbox 서버 인프라 문제로 막혀있음 — 요청이 애플리케이션에 도달하기 전에 IIS(윈도우 웹서버) 레벨에서 `405 Method Not Allowed`(WebDAV 관련 추정)를 반환, SweetBook API의 정상 JSON 에러 포맷이 아니라 IIS 기본 에러 페이지(HTML)가 옴 — 클라이언트 요청 문제 아님. `GET /webhooks/config`·`GET /book-specs` 등 다른 엔드포인트는 정상 동작해 API Key 자체는 문제없음. **SweetBook 측 문의 필요**. `SWEETBOOK_WEBHOOK_SECRET`은 비워둔 채 배포됨 — 웹훅 없이도 주문 생성까지는 완전히 동작하지만, 제작확정/발송/배송완료 등 이후 상태는 자동 갱신되지 않고 "제작 준비중"에 멈춰 보임. 웹훅 문제 해결되면 `PUT /webhooks/config` 재호출해서 시크릿 받아 env에 반영할 것.
+- **배포 완료**: 코드 커밋·푸시(`e80cb37`) + Vercel 프로덕션 배포 완료. Vercel env에 `POLAR_PHYSICAL_BOOK_PRODUCT_ID`/`NEXT_PUBLIC_POLAR_PHYSICAL_BOOK_PRODUCT_ID`/`NEXT_PUBLIC_PHYSICAL_BOOK_PRICE_KRW`/`SWEETBOOK_API_KEY`/`SWEETBOOK_SERVER` 추가 완료(`SWEETBOOK_WEBHOOK_SECRET`은 미설정). `NEXT_PUBLIC_*` 변경 반영을 위해 `vercel --prod` 수동 재배포까지 완료, 실제 프로덕션에서 신규 라우트 응답 확인(`/api/sweetbook/webhook`, `/api/payment/physical-order/create` 401 정상, `/payment/physical-success` 200).
+- **주의**: 아직 Sandbox 결제/Sandbox 인쇄 단계 — 실제 돈이 오가거나 실제 책이 인쇄·배송되지는 않음. Live 전환은 Polar Live 전환과 마찬가지로 별도 절차 필요(SweetBook Business 계정 전환 + Live API Key + 실제 충전금 충전).
 
 ## 방향키 페이지 넘김 기능 제거 (완료·검증됨)
 - 요청: 동화책 읽기 화면에서 키보드 방향키(←/→)로 페이지 넘기는 기능 제외.
