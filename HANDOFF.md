@@ -1,6 +1,15 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-11 (동화책 이미지에 본문 텍스트 직접 렌더링 전환)
+> 마지막 업데이트: 2026-07-12 (2차 PRD Stage 01: GA4 + 콘텐츠 안전필터 + 마진분석)
+
+## 2차 PRD Stage 01 — 데이터 기반 확보 (완료·검증됨)
+- 경쟁력 진단·6단계 2차 PRD 로드맵 아티팩트: https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
+- **GA4 애널리틱스**: `lib/analytics.js`(pageview/trackEvent) + `pages/_app.js`(gtag.js 로드, 클라이언트 라우팅 시 pageview). 측정 ID `G-LD8EN3ZZ6G`(`NEXT_PUBLIC_GA_MEASUREMENT_ID`). 퍼널 이벤트: `sign_up`(SignupForm) / `book_create_start`(create.js) / `book_create_complete`·`book_create_failed`(book/[id].js, 생성중→완료·실패 전환 시점) / `begin_checkout`(pricing.js, PhysicalOrderModal.js).
+  - ⚠️ **버그 발견·수정**: SPA 클라이언트 라우팅 시 `gtag('config', ID, {page_path})` 재호출은 실제로 새 page_view를 전송하지 않음(Playwright로 실제 `google-analytics.com/g/collect` 네트워크 요청까지 확인해서 발견). 명시적 `gtag('event', 'page_view', {...})`로 수정.
+  - ⚠️ **검증 방법 주의**: `curl`로는 `next/script`의 `afterInteractive`(기본 전략) 스크립트가 절대 안 보임 — 하이드레이션 후 클라이언트에서 DOM에 주입되기 때문. 반드시 Playwright 등 실제 브라우저로 `window.gtag`/네트워크 요청을 확인할 것.
+- **콘텐츠 안전 필터**: `lib/openai.js`의 `moderateContent()` — OpenAI Moderation API(`omni-moderation-latest`, 무료)로 `/api/books/create`의 title/theme/characterNames를 생성 전에 검사. 실제 API로 정상/유해 입력 양쪽 검증(유해 입력 시 `flagged:true` + 카테고리 정확히 반환 확인).
+- **마진 분석**: 책 1권당 OpenAI 원가 약 ₩350~760(24~40p 기준, GPT-5.5 텍스트 + gpt-image-2 이미지). 크레딧 ₩890/권 대비 마진 15~61%로 페이지 수 늘수록 얇아짐. ⚠️ 구독 "무제한" 문구(`pricing.js`)는 헤비유저(월 20권+)가 원가를 넘어설 수 있어 소프트캡 검토 권고.
+- **⚠️ Vercel 배포 도메인 재발 이슈**: 정식 Domain으로 등록해도 "git push 자동배포"와 "수동 `vercel --prod`"가 타이밍이 겹치면 도메인이 오래된 배포에 고정되는 문제가 다시 발생함. `vercel inspect <도메인>`으로 배포 ID 대조 → 최신이 아니면 `vercel promote <최신-배포-URL>`로 명시적 승격 필요했음. 자세한 내용·권장 순서는 [[storybook-project-status]] 메모 참고.
 
 ## 동화책 이미지에 본문 텍스트 직접 렌더링 (완료·검증됨)
 - 배경: 참고 영상(조코딩 「실전 수익형 AI 동화책 SaaS 서비스 만들어서 돈 버는 방법」) 스크립트를 사용자가 제공, 현재 구현과 비교 분석하는 과정에서 발견 — 영상은 화면 아래/캡션 오버레이로 텍스트를 따로 그리지 않고 **gpt-image-2가 그림 안에 한글을 직접 그려 넣는 방식**을 썼고 "한글도 안 깨지고 잘 써준다"고 실제로 시연함. 직전 세션에 "AI 이미지 모델의 한글 렌더링은 신뢰 불가"라는 이유로 반대 방향(오버레이 방식)을 채택했었는데, 이 판단이 틀렸을 가능성이 제기됨.
@@ -189,16 +198,16 @@
         새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
      4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
 3. **SweetBook Live 전환** — 🔴 사업 협의 + Business 계정 전환 + Live API Key + 실제 충전금 필요(사용자 액션).
-4. **PRD Stage 01(데이터 기반)·03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(오디오 내레이션·얼굴 유사도)** — 전부 미착수. 위 아티팩트 참고.
+4. **PRD Stage 03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(오디오 내레이션·얼굴 유사도)** — 전부 미착수(Stage 01은 2026-07-12에 완료됨). 위 아티팩트 참고.
 5. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
 ---
 
-## 🚀 배포 상태 (2026-07-11 기준, 세션 종료 시점)
-- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean` — `llms-full.txt`는 사용자가 직접 둔 참고 문서라 커밋 대상 아님).
-- **최신 커밋**: `1738a91`(텍스트-인-이미지 전환 핸드오프 문서화). 그 이전 `513b176`(텍스트-인-이미지 기능), `02a0716`/`e80cb37`(SweetBook 실물 인쇄 기능).
-- **Vercel**: 위 최신 커밋까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 관련 신규 라우트 전부 200/401 정상 응답).
-- **Supabase**: 이번 세션(전체) `physical_orders` 테이블 신규 생성 + `books.page_count` 기본값 24로 변경. `content` JSONB의 `text_in_image` 플래그는 스키마 변경 없이 JSON 필드로만 추가(마이그레이션 불필요).
+## 🚀 배포 상태 (2026-07-12 기준, 세션 종료 시점)
+- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean` — `llms-full.txt`/PPT/PY/txt 파일은 사용자가 직접 둔 별도 작업물이라 커밋 대상 아님).
+- **최신 커밋**: `6d8bb99`(PRD Stage 01: GA4 + 콘텐츠 안전필터). 그 이전 `193dcac`(세션 정리 문서화), `1738a91`/`513b176`(텍스트-인-이미지 전환), `02a0716`/`e80cb37`(SweetBook 실물 인쇄 기능).
+- **Vercel**: 위 최신 커밋까지 production 배포 완료·확인 — `vercel promote`로 도메인이 정확히 최신 배포를 가리키는지까지 확인(위 "Vercel 배포 도메인 재발 이슈" 참고), Playwright로 실제 GA4 이벤트 전송까지 검증.
+- **Supabase**: 이번 세션(전체) `physical_orders` 테이블 신규 생성 + `books.page_count` 기본값 24로 변경. `content` JSONB의 `text_in_image` 플래그는 스키마 변경 없이 JSON 필드로만 추가(마이그레이션 불필요). 이번 Stage 01 작업은 DB 스키마 변경 없음.
 - 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 SweetBook 테스트 주문은 취소·환불로 정리됨.
 
 ---
