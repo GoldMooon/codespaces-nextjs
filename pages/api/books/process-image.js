@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt, withSpeechBubble, IMAGE_QUALITY } from '../../../lib/openai'
+import { createOpenAI, COVER_IMAGE_PROMPT, generateImage, buildImagePrompt, withSpeechBubble, withStoryText, IMAGE_QUALITY } from '../../../lib/openai'
 import { uploadImageToStorage } from '../../../lib/storage'
 
 // 이미지 1장만 생성하므로 단일 요청은 ~50-60초. 함수 한도 안에서 안전하게 끝난다.
@@ -48,6 +48,8 @@ export default async function handler(req, res) {
     const pages = book.content?.pages || []
     // 모든 삽화에 공통 적용할 화풍 + 등장인물 외형 (텍스트 생성 시 만들어 저장됨)
     const styleGuide = book.content?.style_guide || ''
+    // 이 책이 "그림 안에 본문 텍스트 직접 렌더링" 방식인지 (create.js에서 결정, 하위호환용 플래그)
+    const textInImage = Boolean(book.content?.text_in_image)
 
     // 1) 표지가 아직 없으면 표지부터 생성
     if (!book.cover_image_url) {
@@ -87,7 +89,8 @@ export default async function handler(req, res) {
       todo.map(async (idx) => {
         const page = pages[idx]
         try {
-          const scene = withSpeechBubble(page.image_prompt, page.speech_bubble)
+          let scene = textInImage ? withStoryText(page.image_prompt, page.text) : page.image_prompt
+          scene = withSpeechBubble(scene, page.speech_bubble)
           const prompt = buildImagePrompt(styleGuide, scene)
           const b64 = await generateImage(openai, prompt, { size: '1024x1024', quality: IMAGE_QUALITY })
           const url = await uploadImageToStorage(supabase, book.id, `page-${page.page}`, b64)
@@ -106,7 +109,7 @@ export default async function handler(req, res) {
     await supabase
       .from('books')
       .update({
-        content: { style_guide: styleGuide, pages },
+        content: { style_guide: styleGuide, pages, text_in_image: textInImage },
         ...(allDone ? { status: 'completed' } : {}),
       })
       .eq('id', book.id)

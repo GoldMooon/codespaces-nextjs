@@ -114,6 +114,10 @@ export default async function handler(req, res) {
         content: {
           style_guide: styleGuide,
           pages: pages.map((p) => ({ ...p, image_url: null })),
+          // 동화 본문을 그림 안에 직접 렌더링하는 방식(실측 검증됨) — 뷰어/PDF에서
+          // 이미지 아래에 텍스트를 중복으로 그리지 않도록 하는 플래그. 이 필드가 없는
+          // 기존 책들은 하위호환을 위해 계속 텍스트를 별도로 표시한다.
+          text_in_image: true,
         },
       })
       .eq('id', book.id)

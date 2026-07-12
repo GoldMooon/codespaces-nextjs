@@ -191,7 +191,7 @@ export default function BookViewer({ book }) {
             {pages[currentPage - 1].image_url && (
               <img
                 src={pages[currentPage - 1].image_url}
-                alt={`Page ${currentPage}`}
+                alt={pages[currentPage - 1].text || `Page ${currentPage}`}
                 className={styles.pageImage}
               />
             )}
@@ -201,11 +201,15 @@ export default function BookViewer({ book }) {
               </div>
             )}
           </div>
-          <p className={styles.pageText}>
-            {splitIntoBreathUnits(pages[currentPage - 1].text).map((line, i) => (
-              <span key={i} className={styles.breathLine}>{line}</span>
-            ))}
-          </p>
+          {/* 그림 안에 본문이 이미 렌더링된 책(text_in_image)은 아래에 텍스트를 중복 표시하지 않는다.
+              이 플래그가 없는 기존 책은 하위호환을 위해 계속 별도로 텍스트를 보여준다. */}
+          {!book.content?.text_in_image && (
+            <p className={styles.pageText}>
+              {splitIntoBreathUnits(pages[currentPage - 1].text).map((line, i) => (
+                <span key={i} className={styles.breathLine}>{line}</span>
+              ))}
+            </p>
+          )}
         </div>
       )}
 
