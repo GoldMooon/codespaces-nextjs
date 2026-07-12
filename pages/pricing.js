@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { trackEvent } from '../lib/analytics'
 import Header from '../components/ui/Header'
 import Footer from '../components/ui/Footer'
 import Button from '../components/ui/Button'
@@ -116,6 +117,7 @@ export default function PricingPage() {
       const data = await response.json()
 
       if (data.checkoutUrl) {
+        trackEvent('begin_checkout', { product_type: productType })
         window.location.href = data.checkoutUrl
       } else {
         alert('결제 세션 생성에 실패했습니다. Polar 제품 ID를 확인해주세요.')

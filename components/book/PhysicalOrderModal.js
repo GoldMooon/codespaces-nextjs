@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { trackEvent } from '../../lib/analytics'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
 import Button from '../ui/Button'
@@ -51,6 +52,7 @@ export default function PhysicalOrderModal({ book, isOpen, onClose }) {
         throw new Error(data.error || '주문 생성에 실패했습니다.')
       }
 
+      trackEvent('begin_checkout', { product_type: 'physical_book', value: Number(PRICE_KRW), currency: 'KRW' })
       window.location.href = data.checkoutUrl
     } catch (err) {
       console.error('Physical order error:', err)

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { trackEvent } from '../lib/analytics'
 import Header from '../components/ui/Header'
 import Footer from '../components/ui/Footer'
 import Button from '../components/ui/Button'
@@ -119,6 +120,7 @@ export default function CreatePage() {
 
       // Call API to create book
       setCurrentStep('text')
+      trackEvent('book_create_start', { category, age_group: ageGroup, page_count: pageCount, is_photo_based: Boolean(photoUrl) })
       const response = await fetch('/api/books/create', {
         method: 'POST',
         headers: {

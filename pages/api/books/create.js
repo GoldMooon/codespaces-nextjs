@@ -1,5 +1,5 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterInstruction, describeCharacterFromPhoto } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterInstruction, describeCharacterFromPhoto, moderateContent } from '../../../lib/openai'
 
 // 텍스트 생성만 동기 처리하고 이미지는 별도 엔드포인트(process-image)가
 // 1장씩 처리하므로 이 함수는 짧게 끝난다. (추론 모델 사용 시 수십 초까지 걸릴 수 있어 넉넉히 잡음)
@@ -53,6 +53,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Title and theme are required' })
     }
 
+    // 3.5. 콘텐츠 안전 필터 — 아동 대상 서비스이므로 크레딧 차감·생성 전에 입력값부터 검사
+    const openai = createOpenAI()
+    const moderationInput = [title, theme, characterNames].filter(Boolean).join('\n')
+    const moderation = await moderateContent(openai, moderationInput)
+    if (moderation.flagged) {
+      return res.status(400).json({ error: '입력하신 내용에 부적절한 표현이 포함되어 있어 동화책을 만들 수 없습니다. 내용을 수정해주세요.' })
+    }
+
     // 4. 동화책 레코드 생성 (draft 상태)
     const { data: book, error: bookError } = await supabase
       .from('books')
@@ -74,8 +82,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to create book record' })
     }
 
-    // 5. OpenAI로 텍스트 생성
-    const openai = createOpenAI()
+    // 5. OpenAI로 텍스트 생성 (openai 클라이언트는 위 3.5에서 이미 생성됨)
 
     // 사진이 업로드된 경우, 사진 속 인물을 동화 그림체에 맞는 외형 묘사로 변환해
     // 주인공(항상 사진 속 인물)의 style_guide에 반영한다. 분석 실패 시 빈 문자열이

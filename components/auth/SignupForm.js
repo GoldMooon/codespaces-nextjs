@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { trackEvent } from '../../lib/analytics'
 import styles from '../../styles/auth.module.css'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
@@ -42,6 +43,7 @@ export default function SignupForm() {
       setError(error.message)
       setLoading(false)
     } else {
+      trackEvent('sign_up', { method: 'email' })
       alert('회원가입이 완료되었습니다! 이메일을 확인하여 인증을 완료해주세요.')
       router.push('/login')
     }

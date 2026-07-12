@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import Head from 'next/head'
 import Link from 'next/link'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { trackEvent } from '../../lib/analytics'
 import Header from '../../components/ui/Header'
 import Footer from '../../components/ui/Footer'
 import BookViewer from '../../components/book/BookViewer'
@@ -67,6 +68,10 @@ export default function BookPage() {
       if (wasGeneratingRef.current && !notifiedRef.current) {
         notifiedRef.current = true
         notifyBookDone(bookData)
+        trackEvent(bookData.status === 'failed' ? 'book_create_failed' : 'book_create_complete', {
+          category: bookData.category,
+          page_count: bookData.content?.pages?.length || bookData.page_count || 0,
+        })
       }
     }
 
