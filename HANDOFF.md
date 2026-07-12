@@ -170,29 +170,36 @@
 
 ---
 
-## ⏭️ 다음에 할 일 (우선순위순)
+## ⏭️ 다음에 할 일 (우선순위순, 2026-07-11 갱신)
 
-1. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
+> 경쟁력 진단 + 6단계 2차 PRD 로드맵은 Claude Artifact로 별도 정리되어 있음:
+> https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
+> (기능 인벤토리·시장 비교·강점약점·Stage 01~06 로드맵·참고 영상 대비 구현 차이 분석. Stage 04는 텍스트-인-이미지 항목만 부분 완료로 표시됨.)
+
+1. **SweetBook 웹훅 등록 막힘** — 🔴 SweetBook Sandbox 서버 인프라 문제(`PUT /webhooks/config` 호출 시 IIS 405, WebDAV 추정). SweetBook 고객지원 문의 필요. 자세한 내용은 [[sweetbook-print-integration]] 메모 참고.
+2. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
    - **막힌 지점**: 운영(production) Polar 액세스 토큰이 필요한데, 이건 사용자가 polar.sh에 운영 계정으로
-     로그인해서 발급해야 함(Claude가 대신 발급 불가). 토큰 요청까지 안내는 해뒀고, 사용자가
-     "여기까지 저장해줘"라고 해서 토큰 없이 중단된 상태.
+     로그인해서 발급해야 함(Claude가 대신 발급 불가).
    - **토큰 받으면 이어서 할 일**:
-     1) 운영 계정에 제품 3종 재생성(KRW) — 월간구독 ₩9,900 / 연간구독 ₩89,000 / 크레딧10권 ₩8,900
+     1) 운영 계정에 제품 4종 재생성(KRW) — 월간구독 ₩9,900 / 연간구독 ₩89,000 / 크레딧10권 ₩8,900 / 책 제작 배송권 ₩39,000
         (샌드박스 때처럼 organization_id 넣지 말 것, currency는 조직 기본통화에 맞출 것 — 이전에 422 에러 겪음)
      2) `.env.local` + Vercel production env: `POLAR_SERVER`를 `https://api.polar.sh`로,
-        `POLAR_ACCESS_TOKEN`/제품 ID 3종을 운영 값으로 교체
+        `POLAR_ACCESS_TOKEN`/제품 ID 4종을 운영 값으로 교체
      3) 운영용 웹훅 엔드포인트 신규 등록(`https://mytale-ai.vercel.app/api/payment/webhook`) →
         새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
      4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
-2. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
+3. **SweetBook Live 전환** — 🔴 사업 협의 + Business 계정 전환 + Live API Key + 실제 충전금 필요(사용자 액션).
+4. **PRD Stage 01(데이터 기반)·03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(오디오 내레이션·얼굴 유사도)** — 전부 미착수. 위 아티팩트 참고.
+5. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
 ---
 
-## 🚀 배포 상태 (2026-07-08 기준, 세션 종료 시점)
-- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean`).
-- **Vercel**: 최신 커밋(`ebab580` — 나만의 동화책 만들기 통합)까지 production 배포 완료·확인(`https://mytale-ai.vercel.app/create` 200 응답).
-- **Supabase**: 이번 세션은 DB 스키마 변경 없음(코드/프롬프트 변경만). `character-photos` 버킷 존재·public 확인.
-- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 유저/책/사진은 모두 정리됨.
+## 🚀 배포 상태 (2026-07-11 기준, 세션 종료 시점)
+- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean` — `llms-full.txt`는 사용자가 직접 둔 참고 문서라 커밋 대상 아님).
+- **최신 커밋**: `1738a91`(텍스트-인-이미지 전환 핸드오프 문서화). 그 이전 `513b176`(텍스트-인-이미지 기능), `02a0716`/`e80cb37`(SweetBook 실물 인쇄 기능).
+- **Vercel**: 위 최신 커밋까지 production 배포 완료·확인(`https://mytale-ai.vercel.app` 관련 신규 라우트 전부 200/401 정상 응답).
+- **Supabase**: 이번 세션(전체) `physical_orders` 테이블 신규 생성 + `books.page_count` 기본값 24로 변경. `content` JSONB의 `text_in_image` 플래그는 스키마 변경 없이 JSON 필드로만 추가(마이그레이션 불필요).
+- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 SweetBook 테스트 주문은 취소·환불로 정리됨.
 
 ---
 
