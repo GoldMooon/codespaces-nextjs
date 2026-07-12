@@ -12,11 +12,11 @@ const PLANS = [
   {
     id: 'monthly',
     name: '월간 구독',
-    price: '₩9,900',
+    price: '₩39,000',
     period: '/월',
     description: '매달 새로운 동화책을 만들어보세요',
     features: [
-      '매달 동화책 무제한 생성',
+      '매달 동화책 최대 30권 생성',
       '최대 40페이지',
       '텍스트 + 이미지 생성',
       'PDF 다운로드',
@@ -32,9 +32,9 @@ const PLANS = [
   {
     id: 'yearly',
     name: '연간 구독',
-    price: '₩89,000',
+    price: '₩468,000',
     period: '/년',
-    description: '1년 구독 시 2개월 무료!',
+    description: '월간과 동일한 단가로 1년치를 한 번에',
     features: [
       '매달 동화책 최대 30권 생성',
       '최대 40페이지',
@@ -42,7 +42,6 @@ const PLANS = [
       'PDF 다운로드',
       '사진 기반 동화책',
       '우선 지원',
-      '최대 25% 할인',
     ],
     notIncluded: [],
     priceId: process.env.NEXT_PUBLIC_POLAR_YEARLY_PRODUCT_ID,
@@ -56,7 +55,7 @@ const CREDIT_PACKAGES = [
   {
     id: 'credits-10',
     name: '10권 크레딧',
-    price: '₩8,900',
+    price: '₩14,000',
     credits: 10,
     priceId: process.env.NEXT_PUBLIC_POLAR_CREDITS_PRODUCT_ID,
     popular: true,

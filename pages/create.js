@@ -264,7 +264,7 @@ export default function CreatePage() {
 
                 <p className={styles.hint}>
                   {profile?.is_premium
-                    ? '프리미엄 회원: 무제한으로 즐기세요!'
+                    ? '프리미엄 회원: 매달 최대 30권까지 만들 수 있어요!'
                     : `보유 크레딧: ${profile?.credits || 0}회`}
                 </p>
               </div>
