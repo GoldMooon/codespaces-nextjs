@@ -43,6 +43,33 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Insufficient credits' })
     }
 
+    // 2.5. 연간 구독자 월 30권 소프트 캡 — 마진 분석 결과 헤비유저 역마진 리스크 대응.
+    //      월간 구독(₩9,900)은 안내 문구대로 무제한을 유지하고, 월 환산 단가가 더 낮아
+    //      리스크가 더 큰 연간 구독(₩89,000, 월 ₩7,417)에만 캡을 적용한다.
+    if (profile.is_premium) {
+      const { data: subscription } = await supabase
+        .from('subscriptions')
+        .select('plan')
+        .eq('user_id', user.id)
+        .single()
+
+      if (subscription?.plan === 'yearly') {
+        const startOfMonth = new Date()
+        startOfMonth.setUTCDate(1)
+        startOfMonth.setUTCHours(0, 0, 0, 0)
+
+        const { count } = await supabase
+          .from('books')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .gte('created_at', startOfMonth.toISOString())
+
+        if ((count || 0) >= 30) {
+          return res.status(403).json({ error: '이번 달 생성 가능한 동화책 수(30권)를 모두 사용하셨습니다. 다음 달에 다시 이용해주세요.' })
+        }
+      }
+    }
+
     // 3. 요청 데이터 파싱 (사진은 선택사항 — characterPhotoUrl 존재 여부로 사진 기반 여부를 판단)
     const { title, category, theme, characterNames = '', pageCount = 24, characterPhotoUrl } = req.body
     const isPhotoBased = Boolean(characterPhotoUrl)
