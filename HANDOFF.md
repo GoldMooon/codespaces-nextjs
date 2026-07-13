@@ -1,19 +1,50 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-13 (Stage 02: SweetBook 웹훅 버그 해결 확인 + Live 키 확보(미활성화))
+> 마지막 업데이트: 2026-07-13 (Stage 02 완료 + 결제모델 전면개편 즉시결제 전환 + high화질 웹훅 아키텍처 + BGM→TTS, 프로덕션 배포 완료)
 
-## 2차 PRD Stage 02 진행 상황 (2026-07-13, 부분 진행 — Live 미전환)
+## 2차 PRD Stage 02 — SweetBook 웹훅 해결 + Live 키 확보(활성화는 보류) (완료)
 - **SweetBook 웹훅 등록 버그 해결 확인**: 고객지원 문의 후 IIS 405 인프라 버그 해결됨. Sandbox `PUT /webhooks/config` 재호출로 정상 등록(200) 확인. 단 `secretKey`가 마스킹된 값(`whsk_2Uw...`)으로만 옴 — 이미 예전에 한 번 발급된 것으로 보이며 API로는 재발급 불가. **파트너 포털/고객지원에서 전체 시크릿 재발급 필요.** `.env.local`의 `SWEETBOOK_WEBHOOK_SECRET`은 마스킹된(작동 안 하는) 값을 채우지 않고 빈 값으로 유지 — 잘못 채우면 `verifySweetbookWebhookSignature()`가 항상 401을 내서 웹훅이 조용히 전부 실패하기 때문.
 - **SweetBook Live API Key 확보, 활성화는 보류**: `SBYCM3UIJA0N.KIq5nZKtMJ1mGMrvW3WW4QmKfvIExwEe`를 `.env.local`에 `SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`로 저장만 해둠. **사용자가 "Polar Live 전환 후 함께 활성화"를 명시적으로 선택**(SweetBook만 먼저 Live로 가면, 아직 Sandbox인 Polar 가짜 결제로도 실제 SweetBook 충전금이 차감되고 실물 책이 인쇄·발송되는 위험이 있기 때문). 실제 활성화는 Polar 운영 토큰을 받아 두 시스템을 동시에 전환할 때 진행.
 - Polar 운영 전환은 여전히 사용자의 polar.sh 운영 토큰 발급 대기 중 — 안 바뀜.
 
-## 구독·크레딧 가격 재책정 + 연간 구독 제거 (완료·배포 대기, 커밋만 됨)
-- 배경: PRD Stage 01 마진 분석에서 크레딧 마진이 페이지 수에 따라 15~61%로 얇다는 것이 드러남 + 구독 "무제한" 문구가 헤비유저 역마진 리스크 → 물리책 실현 마진(57%)에 맞춰 전체 상품을 재책정.
-- **월간 구독**: ₩9,900 → **₩39,000/월, 월 30권 소프트 캡**(`pages/api/books/create.js` 2.5단계, `profile.is_premium` 전체에 적용 — 과거 연간 가입자가 남아있어도 안전). 평균 사용량 기준 57%+ 마진 확보.
-- **크레딧 10권**: ₩8,900 → **₩14,000**(57%+ 마진).
-- **연간 구독 완전 제거**(커밋 `60651b9`): 57% 마진 기준으로는 월간 대비 할인 여지가 거의 없어(동일 단가로 귀결) 별도 상품 유지 실익 없다고 판단, 사용자 확인 후 `pages/pricing.js`의 `PLANS`에서 제거 + Polar Sandbox 상품 archive 처리.
-- ⚠️ **아직 프로덕션 배포 안 됨** — 커밋 `a218a4c`(재책정)·`68eb3dd`(캡 도입)·`60651b9`(연간 제거)까지 `main`에 push는 됐지만 Vercel `--prod` 배포는 사용자의 "배포해줘" 확인 대기 중.
-- 참고: 조코딩 영상의 실물 책 1권 ₩29,000과 우리 구독 ₩39,000/월(30권)은 원가 구조가 다른 별개 상품(물리 인쇄 ~₩16,850/권 vs 디지털 ~₩560/권)이라 가격이 비슷한 건 우연이며 계산 오류 아님 — 다만 고객 인지 관점에서 "구독이 더 비싸 보인다"는 우려는 별도로 유효.
+## 이미지 생성을 OpenAI 웹훅 기반 백그라운드 방식으로 전환 (완료·실측 검증됨)
+- **배경**: gpt-image-2 `high` 화질은 장당 ~207초 걸림(2026-07-11 실측) — 기존 동기 생성 구조(Vercel 함수 `maxDuration=120초`, 3장씩 병렬)로는 반드시 타임아웃 실패. `low`(~20초/장)로만 운영 중이었음.
+- **해결**: OpenAI Responses API의 `background:true` 모드 사용 — `responses.create({model, input, tools:[{type:'image_generation', model:'gpt-image-2', quality, size}], background:true})`가 즉시(~2초) 응답하고, 실제 생성은 OpenAI 쪽에서 비동기로 처리됨. 완료 통지는 웹훅(`response.completed`/`failed`/`incomplete`/`cancelled`)으로 받는다.
+  - **실제 API로 라이브 검증**(2026-07-13): background 응답 즉시(2.1초) 반환 → `responses.retrieve()`로 폴링 → 27초 뒤 `image_generation_call` 정상 완료(base64 결과 확인). 이후 실제 2페이지짜리 테스트 책으로 표지+페이지 전체 파이프라인(작업 시작→DB 기록→원자적 업데이트→완료 판정)도 end-to-end 검증 완료.
+- **구현**:
+  - `lib/openai.js`: `startImageGeneration()`(작업 시작, 즉시 반환) / `retrieveImageResult()`(상태 조회, 생성 진행과 무관하게 즉시 반환) 추가. 이미지 생성 tool을 트리거하는 "구동" 모델은 `gpt-5.5`로 고정(실측 검증됨, 다른 모델은 미검증이라 바꾸지 말 것).
+  - `lib/imageJobs.js`: 웹훅·폴백폴링 공용 완료처리(`processImageJob`). 페이지 이미지 갱신은 DB 함수 `set_page_image`(jsonb_set 원자적 UPDATE)로 처리 — 여러 작업이 거의 동시에 끝나는 background 모드 특성상, 애플리케이션에서 JSONB 배열을 읽고-수정-쓰는 방식은 경쟁 상태로 서로의 갱신을 덮어쓸 위험이 있어 반드시 DB 함수로 원자화해야 함.
+  - `pages/api/openai/webhook.js`(신규): OpenAI 웹훅 수신 — SDK의 `client.webhooks.unwrap(rawBody, headers)`가 서명 검증(`webhook-signature`/`webhook-timestamp`/`webhook-id` 헤더 + `OPENAI_WEBHOOK_SECRET`)과 JSON 파싱을 한 번에 처리(SweetBook 웹훅처럼 수동 HMAC 구현 불필요). 웹훅 페이로드의 `data.id`는 response id만 담고 있어, 실제 결과는 `responses.retrieve()`로 다시 가져와야 함.
+  - `pages/api/books/check-images.js`(신규, `process-image.js` 대체·삭제됨): 웹훅이 아직 등록/도착 전이거나 유실된 경우의 **폴백 폴링**. `retrieveImageResult()`는 생성 진행 상황과 무관하게 항상 즉시 반환되므로, 화질을 얼마로 올려도 타임아웃 위험이 없음. 클라이언트(`pages/book/[id].js`)는 더 이상 이미지를 "생성"시키지 않고 이 엔드포인트로 완료 여부만 확인(3초 간격 폴링, 예전엔 500ms였음 — 더 이상 무거운 생성 호출이 아니라 가벼운 상태 확인이라 완화).
+  - `pages/api/books/create.js`(및 `lib/bookCreation.js`로 추출된 `createBookAndStartImages()`): 텍스트 생성 후 표지+전체 페이지 이미지 작업을 전부 백그라운드로 "시작"만 시키고 즉시 응답. 51개(50p+표지)까지도 청크 병렬(8개씩)로 빠르게 시작 가능.
+  - `supabase-schema.sql`: `image_generation_jobs` 테이블(response_id↔book_id/kind/page_index 상관관계 추적) + `set_page_image()` 함수 신규.
+- **DB 마이그레이션**: 라이브 Supabase에 위 테이블/함수 적용 완료(사용자가 SQL Editor에서 직접 실행). `POSTGRES_URL_NON_POOLING`으로 직접 연결하는 스크립트는 TLS 인증서 체인 문제(`SELF_SIGNED_CERT_IN_CHAIN`)로 실패했고, `ssl:{rejectUnauthorized:false}`로 우회하는 건 auto-mode classifier가 보안 문제로 차단함(정당한 차단 — 우회하지 않고 사용자에게 대시보드 SQL Editor 실행을 요청하는 방식으로 처리).
+- **OpenAI 웹훅 등록**: platform.openai.com에서 `https://mytale-ai.vercel.app/api/openai/webhook` 등록, `response.completed/failed/incomplete/cancelled` 구독, 발급받은 시그닝 시크릿을 `OPENAI_WEBHOOK_SECRET`으로 반영 완료.
+- `OPENAI_IMAGE_QUALITY=high`로 전환 완료(사용자가 직접 설정) — 위 아키텍처 덕분에 안전.
+
+## 결제 모델 전면 개편 — "만들기 클릭 시 즉시결제" (완료·배포됨)
+- **배경**: 사전구매 크레딧 시스템은 페이지 수·화질에 따른 원가 편차를 반영하지 못하고, high 화질 전환으로 원가가 크게 뛰면서(₩8.4→₩135/장, 이미지 원가 기준) 기존 가격 체계 전체를 다시 짜야 했음. 사용자가 "만들기 클릭 시 즉시결제 방식으로 완전 전환"을 명시적으로 지시.
+- **가격 재계산 조건(v2, 확정)**: 환율 ₩1,500/$1, 이미지 `gpt-image-2 high`(단가 미확인이라 low 대비 ~15배 가정으로 추정 — **실제 청구액으로 재검증 권장**), Polar 수수료 `5% + $0.50`(₩750 정액, 사용자가 알려준 실제 수수료 구조). 공식: `판매가 = [원가÷(1−목표마진) + 750] ÷ 0.95`.
+- **1회 결제 3단 구간가**(목표마진 51%): 24~30p **₩10,340** / 31~40p **₩13,640** / 41~50p **₩16,930**. `lib/pricingTiers.js`의 `ONE_TIME_TIERS`, `getOneTimeTier()`.
+- **월 구독**(목표마진 49%, 평균 32p 가정): ₩39,000 → **₩295,000/월**로 대폭 인상(high 화질 원가 반영). **이중 캡(30권 AND 960페이지, 먼저 도달하는 쪽)** 도입 — 30권 캡만 있으면 헤비유저가 매번 50p로 채울 때 마진이 8%대까지 붕괴하는 문제가 있었음(`lib/subscriptionCap.js`의 `checkSubscriptionCap()`).
+- **무료 5페이지 체험**: 최초 1회, `profiles.free_trial_used_at`(타임스탬프 — 당일 전환 할인 판정에 필요해 boolean 대신 타임스탬프로 기록)로 재사용 차단.
+- **SMS 본인인증(Solapi)**: 이메일 여러 개로 무료체험을 반복 수령하는 어뷰징을 막기 위해, 무료 체험은 휴대폰 인증 완료자만 가능. `lib/solapi.js`(HMAC-SHA256 인증), `lib/otp.js`(6자리 코드, SHA-256 해시 저장, 5분 만료, 5회 시도 제한), `pages/api/auth/{send,verify}-otp.js`. 인증 성공 시 `profiles.phone_number_hash`(SHA-256, `UNIQUE` 제약)에 저장해 동일 번호 재사용을 DB 레벨에서 원천 차단. 발신번호는 사용자 개인 실제 휴대폰 번호(010-4943-3669)로 Solapi 콘솔에서 사전 인증 등록.
+- **당일 전환 할인**: 무료체험 사용 당일에 유료 전환 시 1회 결제 3%, 구독 10% 할인(`lib/pricingTiers.js`의 `SAME_DAY_DISCOUNT`). Polar 체크아웃에 `amount` 파라미터를 실어보내는 방식으로 구현했으나, **Polar 제품이 "고정가"로 설정돼 있으면 이 값이 무시될 수 있어 실제 할인 반영 여부는 아직 미검증** — 후속 확인 필요.
+- **실물책(SweetBook) 3단 구간가**(목표마진 35%): 24~30p ₩43,800 / 31~40p ₩48,250 / 41~50p ₩52,700. `lib/pricingTiers.js`의 `PHYSICAL_TIERS`, `getPhysicalTier()`. 기존 플랫 ₩39,000은 50p 기준 마진이 13.5%까지 얇아지는 문제가 있었음.
+- **아키텍처**: `pending_book_orders` 테이블 신규(physical_orders와 동일 패턴) — "만들기" 클릭 시 구독자(캡 내)/무료체험 자격자는 `lib/bookCreation.js`의 `createBookAndStartImages()`로 즉시 생성, 그 외는 결제 대기 행 생성 + Polar 체크아웃 반환 → 결제 웹훅이 `pending_book_orders.status='paid'`로 갱신 → `pages/api/payment/book-order/process.js`(결제완료 페이지 `pages/payment/book-success.js`에서 폴링 호출)가 실제 생성 수행.
+- **Polar Sandbox 상품 정리**: 구독 상품 가격 ₩39,000→₩295,000 갱신(PATCH), 1회 결제 3단+실물책 3단 총 6개 신규 생성, 크레딧·연간구독·구 실물책 플랫 상품 archive 처리. env 변수 `POLAR_BOOK_ORDER_TIER_*`/`POLAR_PHYSICAL_BOOK_TIER_*` 6종 추가(로컬+Vercel 프로덕션 모두 반영).
+- **UI**: `pages/create.js`에 무료체험/정식제작(24~50p) 모드 토글 추가(`components/book/ThemeInput.js`), 휴대폰 인증 UI(`components/auth/PhoneVerification.js`). `pages/pricing.js`에서 크레딧 구매 섹션 제거, 구독 카드 가격/설명 갱신.
+- ⚠️ **가격 추정치 검증 필요**: gpt-image-2 high 화질의 정확한 단가는 확인 못 했음(low 대비 ~15배 가정). 실제 서비스 운영 데이터(OpenAI 사용량 대시보드)가 쌓이면 재보정 권장. 상세 계산 과정은 가격 검토 아티팩트(v2) 참고.
+
+## BGM 제거 → TTS 내레이션 전환 (완료·실측 검증됨)
+- **배경**: 합성 배경음악(`lib/bgm.js`, Web Audio API) 기능을 제거하고 OpenAI TTS로 페이지를 읽어주는 기능으로 교체.
+- **구현**: `lib/openai.js`의 `generateSpeech()`(`client.audio.speech.create`, 모델 `gpt-4o-mini-tts`) — 실제 API로 검증(3.1초, 87KB mp3 정상 생성, `file` 명령으로 유효한 MPEG 오디오 확인). `lib/storage.js`의 `uploadAudioToStorage()`(book-audio 버킷). `pages/api/books/generate-audio.js`(사용자가 재생 버튼을 눌렀을 때 온디맨드 생성, 이미 있으면 캐시된 URL 재사용). DB 함수 `set_page_audio()`(set_page_image와 동일한 이유로 원자적 갱신).
+- **사용자 피드백 4건 반영(같은 세션 내 반복 수정)**:
+  1. 아이콘이 그림 위에 겹쳐 안 보임 → 이미지 우상단 **바깥쪽**(`top:-18px; right:-18px`)으로 이동 + ghost 버튼 대신 그림자 있는 솔리드 원형 배지(`.narrationButton`, Button 컴포넌트 기본 padding에 밀리지 않도록 `.narrationCorner .narrationButton`으로 선택자 우선순위 높임).
+  2. 목소리가 딱딱함 → `voice: shimmer → coral`, `instructions`를 "20대~30대 여성 어린이집 선생님" 톤으로 구체화.
+  3. 재생 딜레이 불편 → `pages/api/books/check-images.js`가 이미지 생성을 기다리는 폴링 중에(이미지 쪽이 훨씬 오래 걸리므로 여유 있음) 앞쪽 페이지 내레이션을 폴링당 2장씩 미리 합성해둠(`lib/audioJobs.js`의 `ensurePageAudio()`로 온디맨드/선제생성 로직 공용화). 실제로 읽을 때쯤엔 대부분 캐시돼 있어 클릭 즉시 재생.
+  4. 역할에 따른 말머리 요청 → `STORY_GENERATION_PROMPT`에 `narration_lead_in` 필드 추가(화면에는 안 보이고 TTS에서만 사용). **실제 API로 검증하다 프롬프트 결함 발견**: 초안은 "OO가 말했어요," 식으로 뒤에 실제 대사가 나올 것처럼 유도했는데 `text`가 대사가 아니라 서술문이라 이어 읽으면 어색함 → "그때,"/"잠시 후," 처럼 장면 전환만 살려주는 도입구로 프롬프트 재조정 후 재검증(자연스럽게 이어짐 확인).
+- `components/book/BgmToggle.js`, `lib/bgm.js`, 관련 CSS 삭제. `NEXT_PUBLIC_ENABLE_BGM` env 제거.
 
 ## 2차 PRD Stage 01 — 데이터 기반 확보 (완료·검증됨)
 - 경쟁력 진단·6단계 2차 PRD 로드맵 아티팩트: https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
@@ -54,6 +85,9 @@
 - `components/book/BookViewer.js`: `handleKeyDown`(← `goToPrev`/→ `goToNext`) 삭제, 컨테이너의 `tabIndex`/`onKeyDown` 제거, 표지의 "← → 키를 눌러 페이지를 넘기세요" 안내 문구 삭제. `styles/components/BookViewer.module.css`의 관련 `.coverHint` 클래스도 정리.
 - ◀ 이전/다음 ▶ 버튼과 썸네일 클릭 네비게이션은 그대로 유지.
 - 실제 프로덕션에서 방향키 입력 시 더 이상 페이지가 안 넘어가고, 버튼 클릭은 정상 동작하는 것 확인.
+
+## ⚠️ 아래 BGM 관련 섹션 4개는 모두 폐기됨 (2026-07-13, TTS로 대체)
+`lib/bgm.js`/`components/book/BgmToggle.js` 삭제, `NEXT_PUBLIC_ENABLE_BGM` env 제거. 위 "BGM 제거 → TTS 내레이션 전환" 섹션 참고. 아래는 과거 기록으로만 남겨둠.
 
 ## ⏸️ BGM 튜닝 — 사용자가 "나중에 다시 정리하자"며 일시 중단
 지금 상태(카테고리별 코드 진행 + 작곡 멜로디, 볼륨 0.06)로 일단 커밋·배포는 완료됐고 정상 동작함. 다만 사용자가 더 다듬을 여지가 있다고 판단해 다음 세션으로 미룸. 다음에 이어갈 때 참고할 것: 현재 `lib/bgm.js`의 `MOODS` 객체에 카테고리별 `progression`(화음 4개) / `scale`(7음 온음계) / `melody`(음정+리듬 배열)가 정의돼 있음 — 톤/템포/곡 길이 등을 조정하고 싶으면 이 객체만 손보면 됨. 필요하면 `NEXT_PUBLIC_ENABLE_BGM=false`로 즉시 끌 수 있음(별도 재작업 없이 안전하게 롤백 가능).
@@ -195,39 +229,41 @@
 
 ---
 
-## ⏭️ 다음에 할 일 (우선순위순, 2026-07-11 갱신)
+## ⏭️ 다음에 할 일 (우선순위순, 2026-07-13 갱신)
 
 > 경쟁력 진단 + 6단계 2차 PRD 로드맵은 Claude Artifact로 별도 정리되어 있음:
 > https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
-> (기능 인벤토리·시장 비교·강점약점·Stage 01~06 로드맵·참고 영상 대비 구현 차이 분석. Stage 04는 텍스트-인-이미지 항목만 부분 완료로 표시됨.)
+> (기능 인벤토리·시장 비교·강점약점·Stage 01~06 로드맵. 가격 재책정 상세는 별도 가격 검토 아티팩트(v2) 참고 — 둘 다 이번 세션의 즉시결제/이중캡/TTS 반영 전이라 최신화 필요.)
 
-1. ✅ **SweetBook 웹훅 등록 버그 해결(2026-07-13)** — Sandbox 재등록 성공 확인. 단 전체 시크릿은 파트너 포털/고객지원에서 재발급받아야 함. 자세한 내용은 [[sweetbook-print-integration]] 메모 참고.
-2. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
+1. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
    - **막힌 지점**: 운영(production) Polar 액세스 토큰이 필요한데, 이건 사용자가 polar.sh에 운영 계정으로
      로그인해서 발급해야 함(Claude가 대신 발급 불가).
    - **토큰 받으면 이어서 할 일**:
-     1) 운영 계정에 제품 3종 재생성(KRW) — 월간구독 ₩39,000 / 크레딧10권 ₩14,000 / 책 제작 배송권 ₩39,000
-        (연간 구독은 2026-07-13에 상품 자체를 제거함 — 샌드박스 때처럼 organization_id 넣지 말 것,
+     1) 운영 계정에 제품 7종 재생성(KRW) — 월간구독 ₩295,000 / 1회결제 3종(₩10,340·13,640·16,930) /
+        실물책 3종(₩43,800·48,250·52,700) (연간구독·크레딧은 폐지됨 — organization_id 넣지 말 것,
         currency는 조직 기본통화에 맞출 것 — 이전에 422 에러 겪음)
      2) `.env.local` + Vercel production env: `POLAR_SERVER`를 `https://api.polar.sh`로,
-        `POLAR_ACCESS_TOKEN`/제품 ID 3종을 운영 값으로 교체
+        `POLAR_ACCESS_TOKEN`/제품 ID 7종을 운영 값으로 교체
      3) 운영용 웹훅 엔드포인트 신규 등록(`https://mytale-ai.vercel.app/api/payment/webhook`) →
         새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
-     4) **동시에 SweetBook도 Live로 전환**(아래 3번) — Polar만 먼저 live로 가면 반대로 진짜 결제인데
+     4) **동시에 SweetBook도 Live로 전환**(아래 2번) — Polar만 먼저 live로 가면 반대로 진짜 결제인데
         가짜 Sandbox 인쇄가 되는 문제가 생기므로 반드시 같이 전환할 것
-     5) Vercel 재배포 + 체크아웃/웹훅/실물주문 E2E 검증
-3. **SweetBook Live 전환** — 🟡 Live API Key는 이미 확보(`SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`, `.env.local`에 보관만 해둠, 아직 미활성화). 남은 건: ①실제 충전금 충전(PG 결제, 사용자 액션) ②Live 웹훅 재등록(`PUT /webhooks/config`를 Live 서버에 호출) ③위 Polar 운영 전환과 **동시에** `SWEETBOOK_API_KEY`/`SWEETBOOK_SERVER`를 Live 값으로 교체.
-4. **PRD Stage 03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(오디오 내레이션·얼굴 유사도)** — 전부 미착수(Stage 01은 2026-07-12에 완료됨). 위 아티팩트 참고.
-5. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
+     5) Vercel 재배포 + 체크아웃/웹훅/실물주문/1회결제/구독 E2E 검증
+2. **SweetBook Live 전환** — 🟡 Live API Key는 이미 확보(`SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`, `.env.local`에 보관만 해둠, 아직 미활성화). 남은 건: ①실제 충전금 충전(PG 결제, 사용자 액션) ②Live 웹훅 재등록(`PUT /webhooks/config`를 Live 서버에 호출) ③위 Polar 운영 전환과 **동시에** `SWEETBOOK_API_KEY`/`SWEETBOOK_SERVER`를 Live 값으로 교체.
+3. **당일 전환 할인 실제 반영 검증** — `createCheckoutSession()`에 `amount` 파라미터로 할인가를 넘기는데, Polar 제품이 고정가로 설정돼 있으면 무시될 수 있음. 실제 체크아웃 화면에서 할인가가 뜨는지 확인 필요(Sandbox에서라도).
+4. **gpt-image-2 high 화질 실제 단가 검증** — 현재 가격은 low 대비 ~15배 가정치로 계산됨. OpenAI 사용량 대시보드로 실제 청구액 확인 후 필요하면 `lib/pricingTiers.js` 재보정.
+5. **PRD Stage 03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(얼굴 유사도 — 오디오 내레이션은 이번에 완료됨)** — 전부 미착수. 위 아티팩트 참고.
+6. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
 ---
 
-## 🚀 배포 상태 (2026-07-12 기준, 세션 종료 시점)
-- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`nothing to commit, working tree clean` — `llms-full.txt`/PPT/PY/txt 파일은 사용자가 직접 둔 별도 작업물이라 커밋 대상 아님).
-- **최신 커밋**: `6d8bb99`(PRD Stage 01: GA4 + 콘텐츠 안전필터). 그 이전 `193dcac`(세션 정리 문서화), `1738a91`/`513b176`(텍스트-인-이미지 전환), `02a0716`/`e80cb37`(SweetBook 실물 인쇄 기능).
-- **Vercel**: 위 최신 커밋까지 production 배포 완료·확인 — `vercel promote`로 도메인이 정확히 최신 배포를 가리키는지까지 확인(위 "Vercel 배포 도메인 재발 이슈" 참고), Playwright로 실제 GA4 이벤트 전송까지 검증.
-- **Supabase**: 이번 세션(전체) `physical_orders` 테이블 신규 생성 + `books.page_count` 기본값 24로 변경. `content` JSONB의 `text_in_image` 플래그는 스키마 변경 없이 JSON 필드로만 추가(마이그레이션 불필요). 이번 Stage 01 작업은 DB 스키마 변경 없음.
-- 로컬 dev 서버 등 백그라운드 프로세스 없음, 테스트로 만든 SweetBook 테스트 주문은 취소·환불로 정리됨.
+## 🚀 배포 상태 (2026-07-13 기준, 세션 종료 시점)
+- **Git**: `main` 브랜치, 로컬/원격 완전 동기화(`llms-full.txt`/PPT/PY/txt 파일은 사용자가 직접 둔 별도 작업물이라 커밋 대상 아님).
+- **최신 커밋**: `c2356b6`(TTS UX 개선). 그 이전 `aff8f98`(BGM→TTS), `681d621`(크레딧 웹훅 정리), `0a64e85`(실물책 구간가), `1a6cf39`(즉시결제 전환), `f114709`(웹훅 이미지 파이프라인).
+- **Vercel**: 위 최신 커밋까지 production 배포 완료 — 배포 직후 반드시 `vercel inspect mytale-ai.vercel.app`으로 도메인이 실제 최신 배포를 가리키는지 확인할 것(아래 "Vercel 배포 도메인 재발 이슈" 참고, 이번 세션에도 재확인함).
+- **Supabase**: 이번 세션에 `image_generation_jobs`/`pending_book_orders`/`otp_verifications` 테이블 신규, `profiles`에 `phone_number_hash`(UNIQUE)/`phone_verified`/`free_trial_used_at` 컬럼 추가, `set_page_image`/`set_page_audio` DB 함수 추가 — 전부 사용자가 Supabase SQL Editor에서 직접 실행해 라이브 반영 완료.
+- **Vercel env**: `OPENAI_WEBHOOK_SECRET`, `SOLAPI_API_KEY`/`SOLAPI_API_SECRET`/`SOLAPI_SENDER_NUMBER`, `POLAR_BOOK_ORDER_TIER_*`/`POLAR_PHYSICAL_BOOK_TIER_*`(6종) 추가. `OPENAI_IMAGE_QUALITY=high`로 갱신. 폐기된 `POLAR_YEARLY_PRODUCT_ID`/`POLAR_CREDITS_PRODUCT_ID`/`POLAR_PHYSICAL_BOOK_PRODUCT_ID`(구 플랫상품)/`NEXT_PUBLIC_PHYSICAL_BOOK_PRICE_KRW`/`NEXT_PUBLIC_ENABLE_BGM` 전부 제거.
+- 로컬 dev 서버 등 백그라운드 프로세스 없음. 테스트로 만든 이미지 파이프라인 검증용 책/작업 행은 정리됨.
 
 ---
 
