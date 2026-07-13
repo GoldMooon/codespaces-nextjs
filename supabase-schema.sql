@@ -175,6 +175,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 페이지 오디오(TTS 내레이션) URL을 원자적으로 갱신하는 함수. set_page_image와 동일한 이유
+-- (JSONB 배열 읽고-수정-쓰기 경쟁 상태 방지)로 별도 함수를 둠.
+CREATE OR REPLACE FUNCTION set_page_audio(p_book_id UUID, p_page_index INT, p_url TEXT)
+RETURNS void AS $$
+BEGIN
+  UPDATE books
+  SET content = jsonb_set(content, ARRAY['pages', p_page_index::text, 'audio_url'], to_jsonb(p_url), true)
+  WHERE id = p_book_id;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ===========================================
 -- Row Level Security (RLS) 정책
 -- ===========================================

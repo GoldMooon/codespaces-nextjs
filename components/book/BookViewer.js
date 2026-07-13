@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { splitIntoBreathUnits } from '../../lib/textFormat'
-import { AmbientPlayer } from '../../lib/bgm'
 import styles from '../../styles/components/BookViewer.module.css'
 import Button from '../ui/Button'
-import BgmToggle from './BgmToggle'
 import PhysicalOrderModal from './PhysicalOrderModal'
-
-// 배경음악 기능 스위치. 이야기 생성과는 무관한 순수 읽기 화면 기능이지만,
-// 문제가 생기면 이 값을 false로 바꾸거나(.env.local에 NEXT_PUBLIC_ENABLE_BGM=false)
-// 아래 <BgmToggle> 사용부만 주석 처리하면 다른 기능에 영향 없이 바로 끌 수 있다.
-const BGM_ENABLED = process.env.NEXT_PUBLIC_ENABLE_BGM !== 'false'
 
 const PHYSICAL_ORDER_STATUS_LABEL = {
   pending_payment: '결제 대기중',
@@ -35,10 +28,14 @@ export default function BookViewer({ book }) {
   const [currentPage, setCurrentPage] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [downloading, setDownloading] = useState(false)
-  const [bgmPlaying, setBgmPlaying] = useState(false)
-  const bgmPlayerRef = useRef(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [physicalOrder, setPhysicalOrder] = useState(null)
+
+  // TTS 내레이션 — 페이지별로 처음 재생할 때 합성해서 캐시해두고, 이후엔 바로 재생한다.
+  const [audioUrls, setAudioUrls] = useState({}) // { [pageIndex]: url }
+  const [narrationLoading, setNarrationLoading] = useState(false)
+  const [narrationPlaying, setNarrationPlaying] = useState(false)
+  const audioElRef = useRef(null)
 
   const pages = book.content?.pages || []
   const totalPages = pages.length
@@ -88,24 +85,54 @@ export default function BookViewer({ book }) {
     }
   }, [book.id])
 
-  // BGM 재생 상태는 여기(BookViewer)에 둬서, 표지 ↔ 본문 페이지를 넘나들며
-  // <BgmToggle>이 다시 그려져도 음악 자체는 끊기지 않는다.
+  // 페이지를 넘기면 재생 중이던 내레이션은 멈춘다(다음 페이지 것과 헷갈리지 않도록)
   useEffect(() => {
-    if (!BGM_ENABLED) return
-    bgmPlayerRef.current = new AmbientPlayer()
-    return () => {
-      bgmPlayerRef.current?.stop()
-    }
-  }, [])
+    audioElRef.current?.pause()
+    setNarrationPlaying(false)
+  }, [currentPage])
 
-  const toggleBgm = () => {
-    if (!bgmPlayerRef.current) return
-    if (bgmPlaying) {
-      bgmPlayerRef.current.stop()
-      setBgmPlaying(false)
-    } else {
-      bgmPlayerRef.current.start(book.category)
-      setBgmPlaying(true)
+  const playNarration = async () => {
+    const pageIndex = currentPage - 1
+    if (pageIndex < 0) return
+
+    // 이미 재생 중이면 일시정지 토글
+    if (narrationPlaying) {
+      audioElRef.current?.pause()
+      setNarrationPlaying(false)
+      return
+    }
+
+    let url = audioUrls[pageIndex] || pages[pageIndex]?.audio_url
+
+    if (!url) {
+      setNarrationLoading(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const response = await fetch('/api/books/generate-audio', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ bookId: book.id, pageIndex }),
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || '음성 생성에 실패했습니다.')
+        url = data.audioUrl
+        setAudioUrls((prev) => ({ ...prev, [pageIndex]: url }))
+      } catch (err) {
+        console.error('Narration error:', err)
+        alert(err.message)
+        setNarrationLoading(false)
+        return
+      }
+      setNarrationLoading(false)
+    }
+
+    if (audioElRef.current) {
+      audioElRef.current.src = url
+      audioElRef.current.play()
+      setNarrationPlaying(true)
     }
   }
 
@@ -160,6 +187,8 @@ export default function BookViewer({ book }) {
 
   return (
     <div className={styles.container}>
+      <audio ref={audioElRef} onEnded={() => setNarrationPlaying(false)} style={{ display: 'none' }} />
+
       {/* 표지 */}
       {currentPage === 0 && (
         <div className={styles.cover} style={{ transform: `scale(${zoom})` }}>
@@ -170,11 +199,6 @@ export default function BookViewer({ book }) {
                 alt={book.title}
                 className={styles.coverImage}
               />
-            )}
-            {BGM_ENABLED && (
-              <div className={styles.bgmCorner}>
-                <BgmToggle playing={bgmPlaying} onToggle={toggleBgm} />
-              </div>
             )}
           </div>
           <h1 className={styles.coverTitle}>{book.title}</h1>
@@ -195,11 +219,18 @@ export default function BookViewer({ book }) {
                 className={styles.pageImage}
               />
             )}
-            {BGM_ENABLED && (
-              <div className={styles.bgmCorner}>
-                <BgmToggle playing={bgmPlaying} onToggle={toggleBgm} />
-              </div>
-            )}
+            <div className={styles.narrationCorner}>
+              <Button
+                variant="ghost"
+                size="small"
+                onClick={playNarration}
+                loading={narrationLoading}
+                disabled={narrationLoading}
+                title="이 페이지 읽어주기"
+              >
+                {narrationPlaying ? '⏸️' : '🔊'}
+              </Button>
+            </div>
           </div>
           {/* 그림 안에 본문이 이미 렌더링된 책(text_in_image)은 아래에 텍스트를 중복 표시하지 않는다.
               이 플래그가 없는 기존 책은 하위호환을 위해 계속 별도로 텍스트를 보여준다. */}
