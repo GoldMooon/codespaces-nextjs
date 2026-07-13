@@ -11,7 +11,14 @@ import CategorySelect from '../components/book/CategorySelect'
 import AgeGroupSelect from '../components/book/AgeGroupSelect'
 import ThemeInput from '../components/book/ThemeInput'
 import GenerationProgress from '../components/book/GenerationProgress'
+import PhoneVerification from '../components/auth/PhoneVerification'
+import { FREE_TIER_MAX_PAGES } from '../lib/pricingTiers'
 import styles from '../styles/create.module.css'
+
+function wasUsedToday(timestamp) {
+  if (!timestamp) return false
+  return new Date(timestamp).toDateString() === new Date().toDateString()
+}
 
 export default function CreatePage() {
   const router = useRouter()
@@ -49,7 +56,6 @@ export default function CreatePage() {
       }
       setUser(user)
 
-      // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -62,6 +68,12 @@ export default function CreatePage() {
 
     checkAuth()
   }, [router])
+
+  const refetchProfile = async () => {
+    if (!user) return
+    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    setProfile(profileData)
+  }
 
   const handlePhotoSelect = async (file) => {
     setError('')
@@ -141,13 +153,24 @@ export default function CreatePage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.requiresVerification) {
+          await refetchProfile()
+          throw new Error(data.error)
+        }
         throw new Error(data.error || '동화책 생성에 실패했습니다.')
+      }
+
+      // 결제가 필요한 경우(1회 결제 구간) — Polar 체크아웃으로 이동
+      if (data.checkoutUrl) {
+        trackEvent('begin_checkout', { product_type: 'book_order', page_count: pageCount })
+        window.location.href = data.checkoutUrl
+        return
       }
 
       setCurrentStep('complete')
       setCreatedBook(data.book)
 
-      // 텍스트 생성 완료 — 이미지는 백그라운드에서 계속 생성된다.
+      // 구독/무료 티어는 즉시 생성됨 — 이미지는 백그라운드에서 계속 생성된다.
       // 책 페이지로 이동하면 거기서 완료까지 자동 폴링한다.
       router.push(`/book/${data.book.id}`)
 
@@ -182,24 +205,6 @@ export default function CreatePage() {
             만들고 싶은 동화책을 설명해주세요. 사진을 올리면 그 인물이 주인공이 되고,
             올리지 않아도 AI가 어울리는 주인공을 만들어드려요!
           </p>
-
-          {/* 크레딧 정보 */}
-          {!profile?.is_premium && (
-            <div className={styles.creditInfo}>
-              <span>보유 크레딧: </span>
-              <strong>{profile?.credits || 0}권</strong>
-              {profile?.credits < 1 && (
-                <Button
-                  variant="outline"
-                  size="small"
-                  onClick={() => router.push('/pricing')}
-                  style={{ marginLeft: '12px' }}
-                >
-                  크레딧 구매하기
-                </Button>
-              )}
-            </div>
-          )}
 
           {generating ? (
             <div className={styles.generationContainer}>
@@ -248,8 +253,17 @@ export default function CreatePage() {
                   setCharacterNames={setCharacterNames}
                   pageCount={pageCount}
                   setPageCount={setPageCount}
+                  freeEligible={!profile?.free_trial_used_at}
+                  isPremium={Boolean(profile?.is_premium)}
+                  sameDayDiscountEligible={wasUsedToday(profile?.free_trial_used_at)}
                 />
               </div>
+
+              {!profile?.is_premium && pageCount === FREE_TIER_MAX_PAGES && !profile?.phone_verified && (
+                <div className={styles.section}>
+                  <PhoneVerification onVerified={refetchProfile} />
+                </div>
+              )}
 
               {error && <div className={styles.error}>{error}</div>}
 
@@ -257,7 +271,7 @@ export default function CreatePage() {
                 <Button
                   type="submit"
                   size="large"
-                  disabled={(profile?.credits < 1 && !profile?.is_premium) || photoUploading}
+                  disabled={photoUploading || (!profile?.is_premium && pageCount === FREE_TIER_MAX_PAGES && (!profile?.phone_verified || profile?.free_trial_used_at))}
                 >
                   ✨ 동화책 만들기
                 </Button>
@@ -265,7 +279,9 @@ export default function CreatePage() {
                 <p className={styles.hint}>
                   {profile?.is_premium
                     ? '프리미엄 회원: 매달 최대 30권까지 만들 수 있어요!'
-                    : `보유 크레딧: ${profile?.credits || 0}회`}
+                    : pageCount === FREE_TIER_MAX_PAGES
+                      ? '첫 5페이지는 무료로 체험할 수 있어요.'
+                      : '만들기를 누르면 결제 화면으로 이동해요.'}
                 </p>
               </div>
             </form>

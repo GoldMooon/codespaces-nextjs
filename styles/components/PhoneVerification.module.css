@@ -1,0 +1,46 @@
+.box {
+  border: 2px dashed #c7d2fe;
+  background: #eef2ff;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  font-weight: 600;
+  color: #4338ca;
+  margin: 0;
+}
+
+.hint {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.form > :global(div) {
+  flex: 1;
+}
+
+.error {
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.resend {
+  background: none;
+  border: none;
+  color: #6366f1;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}

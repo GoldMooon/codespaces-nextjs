@@ -12,13 +12,13 @@ const PLANS = [
   {
     id: 'monthly',
     name: '월간 구독',
-    price: '₩39,000',
+    price: '₩295,000',
     period: '/월',
-    description: '매달 새로운 동화책을 만들어보세요',
+    description: '매달 새로운 동화책을 마음껏 만들어보세요',
     features: [
-      '매달 동화책 최대 30권 생성',
-      '최대 40페이지',
-      '텍스트 + 이미지 생성',
+      '매달 동화책 최대 30권 (또는 총 960페이지 중 먼저 도달하는 조건)',
+      '24~50페이지, 클릭 한 번으로 바로 생성 — 결제 없이',
+      '텍스트 + 고화질 이미지 생성',
       'PDF 다운로드',
       '사진 기반 동화책',
       '우선 지원',
@@ -27,17 +27,6 @@ const PLANS = [
     priceId: process.env.NEXT_PUBLIC_POLAR_MONTHLY_PRODUCT_ID,
     buttonText: '월간 구독하기',
     variant: 'primary',
-    popular: true,
-  },
-]
-
-const CREDIT_PACKAGES = [
-  {
-    id: 'credits-10',
-    name: '10권 크레딧',
-    price: '₩14,000',
-    credits: 10,
-    priceId: process.env.NEXT_PUBLIC_POLAR_CREDITS_PRODUCT_ID,
     popular: true,
   },
 ]
@@ -132,9 +121,9 @@ export default function PricingPage() {
           ) : (
             <div className={styles.creditsInfo}>
               {user ? (
-                <p>보유 크레딧: <strong>{profile?.credits || 0}권</strong></p>
+                <p>구독 없이도 "동화책 만들기"에서 바로 결제하고 만들 수 있어요. 첫 5페이지는 무료 체험도 가능해요!</p>
               ) : (
-                <p>크레딧을 구매하거나 구독하고 나만의 동화책을 만들어보세요! <a href="/login">로그인</a></p>
+                <p>구독하거나, 만들 때 바로 결제하고 나만의 동화책을 만들어보세요! <a href="/login">로그인</a></p>
               )}
             </div>
           )}
@@ -180,33 +169,12 @@ export default function PricingPage() {
             ))}
           </div>
 
-          {/* Credit Packages */}
-          <h2 className={styles.sectionTitle}>크레딧 구매</h2>
+          {/* One-time purchase info */}
+          <h2 className={styles.sectionTitle}>구독 없이 1권만 만들고 싶다면</h2>
           <p className={styles.sectionSubtitle}>
-            구독 없이도 동화책을 만들어보세요
+            "동화책 만들기"에서 원하는 페이지 수(24~50p)를 고르고 만들기를 누르면, 그 자리에서 결제 후 바로 제작이 시작돼요.
+            24~30p ₩10,340 · 31~40p ₩13,640 · 41~50p ₩16,930
           </p>
-
-          <div className={styles.credits}>
-            {CREDIT_PACKAGES.map((pkg) => (
-              <div
-                key={pkg.id}
-                className={`${styles.creditCard} ${pkg.popular ? styles.popular : ''}`}
-              >
-                {pkg.popular && <span className={styles.popularBadge}>추천</span>}
-                <h4 className={styles.creditName}>{pkg.name}</h4>
-                <div className={styles.creditPrice}>{pkg.price}</div>
-                <Button
-                  variant="outline"
-                  fullWidth
-                  disabled={processing}
-                  loading={processing}
-                  onClick={() => handleSubscribe(pkg.priceId, 'credits')}
-                >
-                  구매하기
-                </Button>
-              </div>
-            ))}
-          </div>
 
           {/* FAQ */}
           <div className={styles.faq}>
@@ -214,7 +182,7 @@ export default function PricingPage() {
 
             <div className={styles.faqItem}>
               <h4>결제는 어떻게 되나요?</h4>
-              <p>Polar를 통해 안전하게 결제됩니다. 월간 구독 또는 크레딧 구매가 가능합니다.</p>
+              <p>Polar를 통해 안전하게 결제됩니다. 월간 구독 또는 만들 때마다 1회 결제가 가능합니다.</p>
             </div>
 
             <div className={styles.faqItem}>
