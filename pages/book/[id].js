@@ -75,12 +75,14 @@ export default function BookPage() {
       }
     }
 
-    // 이미지 1장 생성을 트리거하는 엔드포인트 호출
-    const triggerImage = async () => {
+    // 이미지 생성은 이미 /api/books/create가 전부 백그라운드로 시작해뒀다(웹훅이 완료를
+    // 비동기로 처리). 이 호출은 "생성"이 아니라 웹훅이 아직 안 왔을 이미지 작업이 있는지
+    // 확인·반영하는 폴백 폴링일 뿐이라 항상 빠르게 끝난다(화질/페이지 수와 무관).
+    const checkImages = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return null
-        const res = await fetch('/api/books/process-image', {
+        const res = await fetch('/api/books/check-images', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -90,7 +92,7 @@ export default function BookPage() {
         })
         return res.ok ? await res.json() : null
       } catch (e) {
-        console.error('process-image error:', e)
+        console.error('check-images error:', e)
         return null
       }
     }
@@ -126,22 +128,21 @@ export default function BookPage() {
       setLoading(false)
       checkAndNotify(data)
 
-      // 이미지 생성이 진행 중이면 다음 이미지 1장을 생성하고 반복
+      // 이미지 생성이 진행 중이면 웹훅 폴백 확인 후 다시 조회를 반복한다
       if (data.status === 'generating' && !processing) {
         processing = true
-        const result = await triggerImage()
+        const result = await checkImages()
         processing = false
         if (cancelled) return
-        // 완료/실패면 멈추고, 아니면 곧바로 다음 장 진행
-        if (!result || result.status === 'completed') {
-          // 최종 상태 반영을 위해 한 번 더 조회
+        // 완료/실패면 멈추고, 아니면 잠시 후 다시 확인 (웹훅이 처리하므로 여유 있게 폴링)
+        if (result && (result.status === 'completed' || result.status === 'failed')) {
           const { data: fresh } = await supabase.from('books').select('*').eq('id', id).single()
           if (!cancelled && fresh) {
             setBook(fresh)
             checkAndNotify(fresh)
           }
         } else {
-          setTimeout(fetchBook, 500)
+          setTimeout(fetchBook, 3000)
         }
       }
     }

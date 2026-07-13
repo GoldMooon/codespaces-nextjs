@@ -101,6 +101,35 @@ CREATE TABLE IF NOT EXISTS physical_orders (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 6. image_generation_jobs 테이블 (OpenAI Responses API 비동기 이미지 생성 작업 상관관계 추적)
+--    background:true로 시작한 responses.create() 호출의 response_id를 어느 책의 표지/몇 번째
+--    페이지 작업인지와 연결해준다 — 웹훅(response.completed 등) 수신 시, 그리고 웹훅이
+--    아직 도착하지 않았을 때의 폴백 폴링(check-images.js) 시 둘 다 이 테이블로 조회한다.
+CREATE TABLE IF NOT EXISTS image_generation_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  response_id TEXT UNIQUE NOT NULL,
+  book_id UUID REFERENCES books(id) ON DELETE CASCADE NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('cover', 'page')),
+  page_index INTEGER,              -- kind='page'일 때 content.pages 배열의 인덱스, cover면 NULL
+  status TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'failed')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_image_generation_jobs_book_id ON image_generation_jobs(book_id);
+
+-- 페이지 이미지 URL을 원자적으로 갱신하는 함수. 여러 이미지 생성 작업이 거의 동시에 끝나면서
+-- (배경 모드 특성상 흔함) 애플리케이션 코드에서 content JSONB를 읽고-수정하고-쓰는 방식으로
+-- 처리하면 경쟁 상태에서 서로의 갱신을 덮어쓸 수 있다 — DB 함수 안에서 단일 UPDATE 문으로
+-- jsonb_set을 실행해 이 문제를 원천 차단한다.
+CREATE OR REPLACE FUNCTION set_page_image(p_book_id UUID, p_page_index INT, p_url TEXT)
+RETURNS void AS $$
+BEGIN
+  UPDATE books
+  SET content = jsonb_set(content, ARRAY['pages', p_page_index::text, 'image_url'], to_jsonb(p_url), false)
+  WHERE id = p_book_id;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ===========================================
 -- Row Level Security (RLS) 정책
 -- ===========================================
@@ -110,6 +139,9 @@ ALTER TABLE books ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE physical_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE image_generation_jobs ENABLE ROW LEVEL SECURITY;
+-- image_generation_jobs: 순수 서버 내부 상관관계 테이블 — service role(RLS 우회)로만 접근,
+-- 사용자용 정책 없음(기본 거부)
 
 -- profiles: 본인만 접근
 DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
@@ -172,6 +204,10 @@ CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON subscriptions
 
 DROP TRIGGER IF EXISTS update_physical_orders_updated_at ON physical_orders;
 CREATE TRIGGER update_physical_orders_updated_at BEFORE UPDATE ON physical_orders
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_image_generation_jobs_updated_at ON image_generation_jobs;
+CREATE TRIGGER update_image_generation_jobs_updated_at BEFORE UPDATE ON image_generation_jobs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ===========================================

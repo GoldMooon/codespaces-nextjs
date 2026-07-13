@@ -1,10 +1,48 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterInstruction, describeCharacterFromPhoto, moderateContent } from '../../../lib/openai'
+import { createOpenAI, STORY_GENERATION_PROMPT, TEXT_MODEL, AGE_GROUPS, getAgeGroupGuidance, getCharacterInstruction, describeCharacterFromPhoto, moderateContent, COVER_IMAGE_PROMPT, buildImagePrompt, withSpeechBubble, withStoryText, startImageGeneration } from '../../../lib/openai'
 
-// 텍스트 생성만 동기 처리하고 이미지는 별도 엔드포인트(process-image)가
-// 1장씩 처리하므로 이 함수는 짧게 끝난다. (추론 모델 사용 시 수십 초까지 걸릴 수 있어 넉넉히 잡음)
+// 텍스트는 동기 생성하고, 이미지는 Responses API의 background 모드로 전부 "시작"만 시킨 뒤
+// (완료는 웹훅/폴백폴링이 비동기로 처리) 응답한다. 텍스트 생성(추론 모델, 최대 ~58초 실측)
+// + 최대 51개(50페이지+표지) 이미지 작업 시작(각 ~2초, 청크 병렬)까지 감안해 넉넉히 잡음.
 export const config = {
-  maxDuration: 90,
+  maxDuration: 120,
+}
+
+// 이미지 생성 "시작" 요청을 한 번에 몇 개까지 동시에 보낼지 — OpenAI 요청 한도 보호용.
+// 실제 이미지 생성 자체는 OpenAI 쪽 백그라운드에서 처리되므로 이 값은 응답 속도와 무관.
+const JOB_START_CONCURRENCY = 8
+
+async function startAllImageJobs(openai, supabase, bookId, { styleGuide, pages, title, category, textInImage }) {
+  const jobInserts = []
+
+  const coverScene = COVER_IMAGE_PROMPT.replace('{title}', title).replace('{category}', category || '일반')
+  try {
+    const job = await startImageGeneration(openai, buildImagePrompt(styleGuide, coverScene))
+    jobInserts.push({ response_id: job.id, book_id: bookId, kind: 'cover', page_index: null })
+  } catch (e) {
+    console.error('Cover image job start failed:', e.message)
+    await supabase.from('books').update({ cover_image_url: '' }).eq('id', bookId)
+  }
+
+  for (let i = 0; i < pages.length; i += JOB_START_CONCURRENCY) {
+    const chunk = pages.slice(i, i + JOB_START_CONCURRENCY)
+    await Promise.all(chunk.map(async (page, offset) => {
+      const idx = i + offset
+      try {
+        let scene = textInImage ? withStoryText(page.image_prompt, page.text) : page.image_prompt
+        scene = withSpeechBubble(scene, page.speech_bubble)
+        const job = await startImageGeneration(openai, buildImagePrompt(styleGuide, scene))
+        jobInserts.push({ response_id: job.id, book_id: bookId, kind: 'page', page_index: idx })
+      } catch (e) {
+        console.error(`Page ${idx} image job start failed:`, e.message)
+        await supabase.rpc('set_page_image', { p_book_id: bookId, p_page_index: idx, p_url: '' })
+      }
+    }))
+  }
+
+  if (jobInserts.length > 0) {
+    await supabase.from('image_generation_jobs').insert(jobInserts)
+  }
 }
 
 export default async function handler(req, res) {
@@ -134,19 +172,25 @@ export default async function handler(req, res) {
 
     // 6. 텍스트(이미지 없는 페이지)를 먼저 저장 — 뷰어에서 글은 바로 읽을 수 있도록
     //    style_guide도 함께 저장해 모든 삽화가 같은 화풍·등장인물로 그려지게 한다.
+    const textInImage = true // 동화 본문을 그림 안에 직접 렌더링하는 방식(실측 검증됨)
     await supabase
       .from('books')
       .update({
         content: {
           style_guide: styleGuide,
           pages: pages.map((p) => ({ ...p, image_url: null })),
-          // 동화 본문을 그림 안에 직접 렌더링하는 방식(실측 검증됨) — 뷰어/PDF에서
-          // 이미지 아래에 텍스트를 중복으로 그리지 않도록 하는 플래그. 이 필드가 없는
-          // 기존 책들은 하위호환을 위해 계속 텍스트를 별도로 표시한다.
-          text_in_image: true,
+          // 뷰어/PDF에서 이미지 아래에 텍스트를 중복으로 그리지 않도록 하는 플래그. 이 필드가
+          // 없는 기존 책들은 하위호환을 위해 계속 텍스트를 별도로 표시한다.
+          text_in_image: textInImage,
         },
       })
       .eq('id', book.id)
+
+    // 6.5. 표지 + 모든 페이지의 이미지 생성을 Responses API 백그라운드 모드로 "시작"만 시킨다.
+    //      실제 생성 완료는 웹훅(/api/openai/webhook)이 비동기로 처리하고, 웹훅이 아직
+    //      등록/도착하지 않은 경우를 대비해 클라이언트가 /api/books/check-images로도 폴백
+    //      확인한다. high 화질(장당 최대 ~207초)도 이 방식이면 Vercel 함수 시간 제약과 무관.
+    await startAllImageJobs(openai, supabase, book.id, { styleGuide, pages, title, category, textInImage })
 
     // 7. 크레딧 차감 (프리미엄이 아닌 경우) — 텍스트 생성 성공 시점에 차감
     if (!profile.is_premium) {
@@ -156,8 +200,8 @@ export default async function handler(req, res) {
         .eq('id', user.id)
     }
 
-    // 8. 즉시 응답 — 이미지는 /api/books/process-image가 1장씩 생성하고
-    //    /book/[id]가 완료될 때까지 폴링하며 트리거한다.
+    // 8. 즉시 응답 — 이미지 작업은 이미 전부 백그라운드로 시작됐고, 완료는 웹훅/폴백폴링이
+    //    비동기로 처리한다. 클라이언트는 book 행 상태만 폴링하면 된다.
     return res.status(200).json({
       success: true,
       book: {
