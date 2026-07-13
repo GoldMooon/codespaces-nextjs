@@ -1,6 +1,19 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-12 (2차 PRD Stage 01: GA4 + 콘텐츠 안전필터 + 마진분석)
+> 마지막 업데이트: 2026-07-13 (Stage 02: SweetBook 웹훅 버그 해결 확인 + Live 키 확보(미활성화))
+
+## 2차 PRD Stage 02 진행 상황 (2026-07-13, 부분 진행 — Live 미전환)
+- **SweetBook 웹훅 등록 버그 해결 확인**: 고객지원 문의 후 IIS 405 인프라 버그 해결됨. Sandbox `PUT /webhooks/config` 재호출로 정상 등록(200) 확인. 단 `secretKey`가 마스킹된 값(`whsk_2Uw...`)으로만 옴 — 이미 예전에 한 번 발급된 것으로 보이며 API로는 재발급 불가. **파트너 포털/고객지원에서 전체 시크릿 재발급 필요.** `.env.local`의 `SWEETBOOK_WEBHOOK_SECRET`은 마스킹된(작동 안 하는) 값을 채우지 않고 빈 값으로 유지 — 잘못 채우면 `verifySweetbookWebhookSignature()`가 항상 401을 내서 웹훅이 조용히 전부 실패하기 때문.
+- **SweetBook Live API Key 확보, 활성화는 보류**: `SBYCM3UIJA0N.KIq5nZKtMJ1mGMrvW3WW4QmKfvIExwEe`를 `.env.local`에 `SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`로 저장만 해둠. **사용자가 "Polar Live 전환 후 함께 활성화"를 명시적으로 선택**(SweetBook만 먼저 Live로 가면, 아직 Sandbox인 Polar 가짜 결제로도 실제 SweetBook 충전금이 차감되고 실물 책이 인쇄·발송되는 위험이 있기 때문). 실제 활성화는 Polar 운영 토큰을 받아 두 시스템을 동시에 전환할 때 진행.
+- Polar 운영 전환은 여전히 사용자의 polar.sh 운영 토큰 발급 대기 중 — 안 바뀜.
+
+## 구독·크레딧 가격 재책정 + 연간 구독 제거 (완료·배포 대기, 커밋만 됨)
+- 배경: PRD Stage 01 마진 분석에서 크레딧 마진이 페이지 수에 따라 15~61%로 얇다는 것이 드러남 + 구독 "무제한" 문구가 헤비유저 역마진 리스크 → 물리책 실현 마진(57%)에 맞춰 전체 상품을 재책정.
+- **월간 구독**: ₩9,900 → **₩39,000/월, 월 30권 소프트 캡**(`pages/api/books/create.js` 2.5단계, `profile.is_premium` 전체에 적용 — 과거 연간 가입자가 남아있어도 안전). 평균 사용량 기준 57%+ 마진 확보.
+- **크레딧 10권**: ₩8,900 → **₩14,000**(57%+ 마진).
+- **연간 구독 완전 제거**(커밋 `60651b9`): 57% 마진 기준으로는 월간 대비 할인 여지가 거의 없어(동일 단가로 귀결) 별도 상품 유지 실익 없다고 판단, 사용자 확인 후 `pages/pricing.js`의 `PLANS`에서 제거 + Polar Sandbox 상품 archive 처리.
+- ⚠️ **아직 프로덕션 배포 안 됨** — 커밋 `a218a4c`(재책정)·`68eb3dd`(캡 도입)·`60651b9`(연간 제거)까지 `main`에 push는 됐지만 Vercel `--prod` 배포는 사용자의 "배포해줘" 확인 대기 중.
+- 참고: 조코딩 영상의 실물 책 1권 ₩29,000과 우리 구독 ₩39,000/월(30권)은 원가 구조가 다른 별개 상품(물리 인쇄 ~₩16,850/권 vs 디지털 ~₩560/권)이라 가격이 비슷한 건 우연이며 계산 오류 아님 — 다만 고객 인지 관점에서 "구독이 더 비싸 보인다"는 우려는 별도로 유효.
 
 ## 2차 PRD Stage 01 — 데이터 기반 확보 (완료·검증됨)
 - 경쟁력 진단·6단계 2차 PRD 로드맵 아티팩트: https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
@@ -29,7 +42,10 @@
 - **UI**: `components/book/PhysicalOrderModal.js`(주소 입력 모달), `BookViewer.js`에 페이지 수 24~130짝수 조건 만족 시 "🎁 실물 책으로 받기" 버튼 + 주문 상태 뱃지(4초 간격 폴링, `paid` 상태면 자동으로 process 엔드포인트 재호출).
 - **Polar 상품**: Sandbox에 "책 제작 배송권" 신규 생성 완료(`POLAR_PHYSICAL_BOOK_PRODUCT_ID=2f4cbcf0-1c79-4fee-a385-ad739aa07da1`, ₩39,000 정액 — SweetBook 원가(24~40p 기준 상품+배송+VAT 약 2.5~3만원) 대비 마진 있음, 필요시 파트너 포털에서 가격 조정 가능).
 - **실제 SweetBook Sandbox E2E 검증 완료**(합성 테스트 이미지 24페이지, 실제 고객 데이터 미사용): 인쇄용 PDF 생성 → 책 생성 → 표지/내지 업로드(`valid:true`, 경고 없음) → 최종화 → 주문 생성(`PDF_READY`, ₩15,327 정상 차감) → SweetBook이 실제 저장한 PDF를 재다운로드해 이미지 렌더링까지 육안 확인 완료 → 테스트 주문은 취소·환불로 정리함. Sandbox 충전금 ₩50,000 충전해둠(테스트용, 실제 비용 없음).
-- ⚠️ **웹훅 미완료**: `PUT /webhooks/config`(웹훅 등록 API)가 SweetBook Sandbox 서버 인프라 문제로 막혀있음 — 요청이 애플리케이션에 도달하기 전에 IIS(윈도우 웹서버) 레벨에서 `405 Method Not Allowed`(WebDAV 관련 추정)를 반환, SweetBook API의 정상 JSON 에러 포맷이 아니라 IIS 기본 에러 페이지(HTML)가 옴 — 클라이언트 요청 문제 아님. `GET /webhooks/config`·`GET /book-specs` 등 다른 엔드포인트는 정상 동작해 API Key 자체는 문제없음. **SweetBook 측 문의 필요**. `SWEETBOOK_WEBHOOK_SECRET`은 비워둔 채 배포됨 — 웹훅 없이도 주문 생성까지는 완전히 동작하지만, 제작확정/발송/배송완료 등 이후 상태는 자동 갱신되지 않고 "제작 준비중"에 멈춰 보임. 웹훅 문제 해결되면 `PUT /webhooks/config` 재호출해서 시크릿 받아 env에 반영할 것.
+- ✅ **웹훅 등록 버그 해결 확인됨(2026-07-13)**: SweetBook 고객지원 문의 후 IIS 405 인프라 버그가 해결됨. Sandbox에 `PUT /webhooks/config`를 재호출해 `webhookUrl=https://mytale-ai.vercel.app/api/sweetbook/webhook`로 정상 등록(200) 확인.
+  ⚠️ **단, 전체 `secretKey`는 아직 확보 못함**: 응답이 `whsk_2Uw...`처럼 마스킹되어 옴 — 문서상 "최초 등록 시에만 전체 값 반환"인데 `DELETE` 후 재`PUT`해도 `createdAt`이 그대로라 이미 예전에(고객지원 트러블슈팅 중으로 추정) 한 번 발급된 것으로 보임. API로는 재발급 엔드포인트가 없어(문서엔 "분실 시 재발급 필요"라고만 명시) **파트너 포털 또는 고객지원을 통해 재발급받아야 함**. `SWEETBOOK_WEBHOOK_SECRET`은 마스킹된 값(작동 안 함)을 채워두지 않고 **빈 값으로 되돌림** — 잘못된 값이 있으면 `verifySweetbookWebhookSignature()`가 항상 401을 반환해 모든 웹훅이 조용히 실패하기 때문. 웹훅 없이도 주문 생성까지는 완전히 동작하지만, 제작확정/발송/배송완료 등 이후 상태는 자동 갱신되지 않고 "제작 준비중"에 멈춰 보임.
+- ✅ **SweetBook Live API Key 발급받음(2026-07-13)**: `SBYCM3UIJA0N.KIq5nZKtMJ1mGMrvW3WW4QmKfvIExwEe`, `.env.local`에 `SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`(`https://api.sweetbook.com/v1`)로 안전하게 보관만 해둠 — **아직 활성화 안 함**.
+  ⚠️ **활성화 보류 이유(사용자 확인됨)**: Polar 결제가 아직 Sandbox(가짜 결제)인 상태에서 SweetBook만 Live로 전환하면, 고객이 가짜 결제로 "결제 완료"를 찍어도 물리 주문 처리 로직(`physical-order/process.js`)이 그대로 실행돼 **실제 SweetBook 충전금이 차감되고 실물 책이 인쇄·배송**될 위험이 있음(매출은 가짜인데 비용만 실제 발생). **Polar 운영(production) 전환과 SweetBook Live 전환을 반드시 동시에 진행할 것** — 아래 "Polar 운영 전환" 섹션의 토큰 발급이 선행 조건.
 - **배포 완료**: 코드 커밋·푸시(`e80cb37`) + Vercel 프로덕션 배포 완료. Vercel env에 `POLAR_PHYSICAL_BOOK_PRODUCT_ID`/`NEXT_PUBLIC_POLAR_PHYSICAL_BOOK_PRODUCT_ID`/`NEXT_PUBLIC_PHYSICAL_BOOK_PRICE_KRW`/`SWEETBOOK_API_KEY`/`SWEETBOOK_SERVER` 추가 완료(`SWEETBOOK_WEBHOOK_SECRET`은 미설정). `NEXT_PUBLIC_*` 변경 반영을 위해 `vercel --prod` 수동 재배포까지 완료, 실제 프로덕션에서 신규 라우트 응답 확인(`/api/sweetbook/webhook`, `/api/payment/physical-order/create` 401 정상, `/payment/physical-success` 200).
 - **주의**: 아직 Sandbox 결제/Sandbox 인쇄 단계 — 실제 돈이 오가거나 실제 책이 인쇄·배송되지는 않음. Live 전환은 Polar Live 전환과 마찬가지로 별도 절차 필요(SweetBook Business 계정 전환 + Live API Key + 실제 충전금 충전).
 
@@ -185,19 +201,22 @@
 > https://claude.ai/code/artifact/fda14e8c-41ed-4071-81c5-bfcceeb3ea4f
 > (기능 인벤토리·시장 비교·강점약점·Stage 01~06 로드맵·참고 영상 대비 구현 차이 분석. Stage 04는 텍스트-인-이미지 항목만 부분 완료로 표시됨.)
 
-1. **SweetBook 웹훅 등록 막힘** — 🔴 SweetBook Sandbox 서버 인프라 문제(`PUT /webhooks/config` 호출 시 IIS 405, WebDAV 추정). SweetBook 고객지원 문의 필요. 자세한 내용은 [[sweetbook-print-integration]] 메모 참고.
+1. ✅ **SweetBook 웹훅 등록 버그 해결(2026-07-13)** — Sandbox 재등록 성공 확인. 단 전체 시크릿은 파트너 포털/고객지원에서 재발급받아야 함. 자세한 내용은 [[sweetbook-print-integration]] 메모 참고.
 2. **Polar 운영(production) 전환** — 🔴 진행 중, 사용자 액션 대기.
    - **막힌 지점**: 운영(production) Polar 액세스 토큰이 필요한데, 이건 사용자가 polar.sh에 운영 계정으로
      로그인해서 발급해야 함(Claude가 대신 발급 불가).
    - **토큰 받으면 이어서 할 일**:
-     1) 운영 계정에 제품 4종 재생성(KRW) — 월간구독 ₩9,900 / 연간구독 ₩89,000 / 크레딧10권 ₩8,900 / 책 제작 배송권 ₩39,000
-        (샌드박스 때처럼 organization_id 넣지 말 것, currency는 조직 기본통화에 맞출 것 — 이전에 422 에러 겪음)
+     1) 운영 계정에 제품 3종 재생성(KRW) — 월간구독 ₩39,000 / 크레딧10권 ₩14,000 / 책 제작 배송권 ₩39,000
+        (연간 구독은 2026-07-13에 상품 자체를 제거함 — 샌드박스 때처럼 organization_id 넣지 말 것,
+        currency는 조직 기본통화에 맞출 것 — 이전에 422 에러 겪음)
      2) `.env.local` + Vercel production env: `POLAR_SERVER`를 `https://api.polar.sh`로,
-        `POLAR_ACCESS_TOKEN`/제품 ID 4종을 운영 값으로 교체
+        `POLAR_ACCESS_TOKEN`/제품 ID 3종을 운영 값으로 교체
      3) 운영용 웹훅 엔드포인트 신규 등록(`https://mytale-ai.vercel.app/api/payment/webhook`) →
         새 `POLAR_WEBHOOK_SECRET` 발급받아 env 반영
-     4) Vercel 재배포 + 체크아웃/웹훅 E2E 검증
-3. **SweetBook Live 전환** — 🔴 사업 협의 + Business 계정 전환 + Live API Key + 실제 충전금 필요(사용자 액션).
+     4) **동시에 SweetBook도 Live로 전환**(아래 3번) — Polar만 먼저 live로 가면 반대로 진짜 결제인데
+        가짜 Sandbox 인쇄가 되는 문제가 생기므로 반드시 같이 전환할 것
+     5) Vercel 재배포 + 체크아웃/웹훅/실물주문 E2E 검증
+3. **SweetBook Live 전환** — 🟡 Live API Key는 이미 확보(`SWEETBOOK_API_KEY_LIVE`/`SWEETBOOK_SERVER_LIVE`, `.env.local`에 보관만 해둠, 아직 미활성화). 남은 건: ①실제 충전금 충전(PG 결제, 사용자 액션) ②Live 웹훅 재등록(`PUT /webhooks/config`를 Live 서버에 호출) ③위 Polar 운영 전환과 **동시에** `SWEETBOOK_API_KEY`/`SWEETBOOK_SERVER`를 Live 값으로 교체.
 4. **PRD Stage 03(성장 루프)·05(리텐션)·06(비즈니스 확장) + Stage 04 잔여(오디오 내레이션·얼굴 유사도)** — 전부 미착수(Stage 01은 2026-07-12에 완료됨). 위 아티팩트 참고.
 5. (선택) 실제 구매 도메인 연결 시 Vercel Deployment Protection 설정 재검토 (현재 비활성화 상태로 완전 공개).
 
