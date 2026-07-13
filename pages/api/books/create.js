@@ -43,9 +43,9 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Insufficient credits' })
     }
 
-    // 2.5. 구독자(월간·연간 공통) 월 30권 소프트 캡 — 마진 분석(Stage 01) 기준 가격
-    //      책정(₩39,000/월, ₩468,000/년 = 월 ₩39,000 동일 단가)이 "월 30권 사용"을
-    //      전제로 하므로, 월간·연간 구분 없이 동일하게 캡을 적용한다.
+    // 2.5. 구독자 월 30권 소프트 캡 — 마진 분석(Stage 01) 기준 가격 책정(₩39,000/월)이
+    //      "월 30권 사용"을 전제로 하므로 프리미엄 전체에 캡을 적용한다. (연간 구독은
+    //      상품에서 제외됐지만 is_premium 플래그만으로 판정하므로 과거 가입자가 있어도 안전)
     if (profile.is_premium) {
       const startOfMonth = new Date()
       startOfMonth.setUTCDate(1)

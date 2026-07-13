@@ -29,26 +29,6 @@ const PLANS = [
     variant: 'primary',
     popular: true,
   },
-  {
-    id: 'yearly',
-    name: '연간 구독',
-    price: '₩468,000',
-    period: '/년',
-    description: '월간과 동일한 단가로 1년치를 한 번에',
-    features: [
-      '매달 동화책 최대 30권 생성',
-      '최대 40페이지',
-      '텍스트 + 이미지 생성',
-      'PDF 다운로드',
-      '사진 기반 동화책',
-      '우선 지원',
-    ],
-    notIncluded: [],
-    priceId: process.env.NEXT_PUBLIC_POLAR_YEARLY_PRODUCT_ID,
-    buttonText: '연간 구독하기',
-    variant: 'primary',
-    popular: false,
-  },
 ]
 
 const CREDIT_PACKAGES = [
@@ -234,7 +214,7 @@ export default function PricingPage() {
 
             <div className={styles.faqItem}>
               <h4>결제는 어떻게 되나요?</h4>
-              <p>Polar를 통해 안전하게 결제됩니다. 월간/연간 구독 또는 크레딧 구매가 가능합니다.</p>
+              <p>Polar를 통해 안전하게 결제됩니다. 월간 구독 또는 크레딧 구매가 가능합니다.</p>
             </div>
 
             <div className={styles.faqItem}>
