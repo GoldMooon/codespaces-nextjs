@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { trackEvent } from '../../lib/analytics'
+import { getPhysicalTier } from '../../lib/pricingTiers'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
 import Button from '../ui/Button'
 
-const PRICE_KRW = process.env.NEXT_PUBLIC_PHYSICAL_BOOK_PRICE_KRW || '39000'
-
 export default function PhysicalOrderModal({ book, isOpen, onClose }) {
+  const pageCount = book?.content?.pages?.length || book?.page_count || 0
+  const tier = getPhysicalTier(pageCount)
+  const priceKrw = tier?.price || 0
   const [form, setForm] = useState({
     recipientName: '',
     recipientPhone: '',
@@ -52,7 +54,7 @@ export default function PhysicalOrderModal({ book, isOpen, onClose }) {
         throw new Error(data.error || '주문 생성에 실패했습니다.')
       }
 
-      trackEvent('begin_checkout', { product_type: 'physical_book', value: Number(PRICE_KRW), currency: 'KRW' })
+      trackEvent('begin_checkout', { product_type: 'physical_book', value: priceKrw, currency: 'KRW' })
       window.location.href = data.checkoutUrl
     } catch (err) {
       console.error('Physical order error:', err)
@@ -64,7 +66,7 @@ export default function PhysicalOrderModal({ book, isOpen, onClose }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="🎁 실물 책으로 받기" size="medium">
       <p style={{ color: '#64748b', fontSize: 14, marginTop: 0, marginBottom: 20 }}>
-        고화질 스퀘어북(하드커버, 243×248mm)으로 인쇄되어 배송됩니다. 가격: <strong>₩{Number(PRICE_KRW).toLocaleString()}</strong> (배송비 포함)
+        고화질 스퀘어북(하드커버, 243×248mm)으로 인쇄되어 배송됩니다. 가격: <strong>₩{priceKrw.toLocaleString()}</strong> ({tier?.label}, 배송비 포함)
       </p>
 
       <form onSubmit={handleSubmit}>
