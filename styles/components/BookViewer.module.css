@@ -33,9 +33,9 @@
   }
 }
 
-/* 표지/본문 이미지 + 배경음악 배지를 함께 담는 기준 컨테이너.
-   position:relative + 실제 이미지 폭에 맞춘 max-width라서, 배지가
-   항상 "이미지의" 우상단 모서리에 붙고 페이지를 넘겨도 위치가 안 흔들린다. */
+/* 표지/본문 이미지 + 읽어주기 버튼을 함께 담는 기준 컨테이너.
+   position:relative + 실제 이미지 폭에 맞춘 max-width라서, 버튼이
+   항상 "이미지의" 우상단 모서리 밖에 붙고 페이지를 넘겨도 위치가 안 흔들린다. */
 .imageFrame {
   position: relative;
   width: 100%;
@@ -51,11 +51,41 @@
   max-width: 600px;
 }
 
+/* 이미지 우상단 "바깥쪽"으로 살짝 튀어나오게 배치 — 그림 위에 겹치면 배경에 묻혀 눈에
+   안 띄는 문제가 있어, 이미지 경계 밖으로 빼서 항상 뚜렷하게 보이도록 함 */
 .narrationCorner {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: -18px;
+  right: -18px;
   z-index: 5;
+}
+
+/* 상위 클래스와 묶어 선택자 우선순위를 올려서, Button 컴포넌트 자체의 기본 padding/size
+   같은 단일 클래스 스타일(.medium 등)에 밀려 덮어써지지 않게 함 */
+.narrationCorner .narrationButton {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
+  border: 3px solid white;
+}
+
+@media (max-width: 480px) {
+  .narrationCorner {
+    top: -12px;
+    right: -8px;
+  }
+
+  .narrationCorner .narrationButton {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
 }
 
 .coverImage {

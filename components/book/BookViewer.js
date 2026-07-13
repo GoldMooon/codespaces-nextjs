@@ -221,12 +221,12 @@ export default function BookViewer({ book }) {
             )}
             <div className={styles.narrationCorner}>
               <Button
-                variant="ghost"
-                size="small"
+                variant="primary"
                 onClick={playNarration}
                 loading={narrationLoading}
                 disabled={narrationLoading}
                 title="이 페이지 읽어주기"
+                className={styles.narrationButton}
               >
                 {narrationPlaying ? '⏸️' : '🔊'}
               </Button>

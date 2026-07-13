@@ -1,11 +1,18 @@
 import { createServerSupabase } from '../../../lib/supabase'
 import { createOpenAI } from '../../../lib/openai'
 import { processImageJob } from '../../../lib/imageJobs'
+import { ensurePageAudio } from '../../../lib/audioJobs'
 
 // 웹훅이 아직 등록/도착하지 않은 경우를 위한 폴백 폴링 엔드포인트. process-image.js와 달리
 // 여기서는 이미지를 "생성"하지 않고 이미 시작된 백그라운드 작업(image_generation_jobs)의
 // 완료 여부만 조회(retrieveImageResult, 즉시 반환)하므로 생성 시간(최대 ~207초/high화질)과
 // 무관하게 항상 빠르게 끝난다. 화질 설정과 상관없이 안전.
+//
+// 이미지 생성을 기다리는 동안(보통 TTS보다 훨씬 오래 걸림) 여유가 있으므로, 클라이언트가
+// 이 엔드포인트를 폴링하는 김에 앞쪽 페이지 내레이션도 몇 장씩 미리 합성해둔다. 그러면
+// 사용자가 실제로 읽기 시작할 때쯤엔 이미 캐시돼 있어 재생 버튼을 눌러도 지연이 거의 없다.
+const AUDIO_PREGEN_PER_POLL = 2
+
 export const config = {
   maxDuration: 30,
 }
@@ -30,7 +37,7 @@ export default async function handler(req, res) {
 
     const { data: book, error: bookError } = await supabase
       .from('books')
-      .select('id, status')
+      .select('id, status, content')
       .eq('id', bookId)
       .eq('user_id', user.id)
       .single()
@@ -49,6 +56,19 @@ export default async function handler(req, res) {
 
     const openai = createOpenAI()
     await Promise.all((jobs || []).map((job) => processImageJob(supabase, openai, job)))
+
+    const pagesNeedingAudio = (book.content?.pages || [])
+      .map((page, index) => ({ page, index }))
+      .filter(({ page }) => !page.audio_url && (page.text || '').trim())
+      .slice(0, AUDIO_PREGEN_PER_POLL)
+
+    await Promise.all(
+      pagesNeedingAudio.map(({ page, index }) =>
+        ensurePageAudio(supabase, openai, bookId, index, page).catch((e) =>
+          console.error(`Audio pregen failed for page ${index}:`, e.message)
+        )
+      )
+    )
 
     const { data: refreshed } = await supabase
       .from('books')

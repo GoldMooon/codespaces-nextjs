@@ -1,9 +1,10 @@
 import { createServerSupabase } from '../../../lib/supabase'
-import { createOpenAI, generateSpeech } from '../../../lib/openai'
-import { uploadAudioToStorage } from '../../../lib/storage'
+import { createOpenAI } from '../../../lib/openai'
+import { ensurePageAudio } from '../../../lib/audioJobs'
 
 // TTS 합성은 짧은 페이지 텍스트 하나 기준 몇 초 안에 끝나는 동기 호출이라
-// 이미지 생성처럼 background/웹훅 구조가 필요 없다.
+// 이미지 생성처럼 background/웹훅 구조가 필요 없다. (대부분의 경우 check-images.js가
+// 이미지 대기 중에 선제적으로 미리 만들어두므로, 여기 도달할 때는 이미 캐시돼 있어 즉시 반환됨)
 export const config = {
   maxDuration: 30,
 }
@@ -39,24 +40,9 @@ export default async function handler(req, res) {
     const page = book.content?.pages?.[pageIndex]
     if (!page) return res.status(400).json({ error: 'Invalid pageIndex' })
 
-    // 이미 합성된 오디오가 있으면 재사용(중복 생성 방지)
-    if (page.audio_url) {
-      return res.status(200).json({ audioUrl: page.audio_url })
-    }
-
-    const text = (page.text || '').trim()
-    if (!text) return res.status(400).json({ error: 'This page has no text to narrate' })
-
     const openai = createOpenAI()
-    const audioBuffer = await generateSpeech(openai, text)
-    const audioUrl = await uploadAudioToStorage(supabase, bookId, `page-${pageIndex + 1}`, audioBuffer)
-
-    const { error: rpcError } = await supabase.rpc('set_page_audio', {
-      p_book_id: bookId,
-      p_page_index: pageIndex,
-      p_url: audioUrl,
-    })
-    if (rpcError) throw rpcError
+    const audioUrl = await ensurePageAudio(supabase, openai, bookId, pageIndex, page)
+    if (!audioUrl) return res.status(400).json({ error: 'This page has no text to narrate' })
 
     return res.status(200).json({ audioUrl })
   } catch (error) {
