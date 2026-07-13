@@ -77,21 +77,6 @@ export default async function handler(req, res) {
           break
         }
 
-        if (productType === 'credits') {
-          // 크레딧 추가
-          const creditsToAdd = parseInt(metadata.credits, 10) || 10
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('credits')
-            .eq('id', userId)
-            .single()
-
-          await supabase
-            .from('profiles')
-            .update({ credits: (profile?.credits || 0) + creditsToAdd })
-            .eq('id', userId)
-        }
-
         // 결제 내역 기록
         await supabase
           .from('payments')
