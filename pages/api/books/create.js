@@ -1,15 +1,17 @@
+import { waitUntil } from '@vercel/functions'
 import { createServerSupabase } from '../../../lib/supabase'
 import { createOpenAI, AGE_GROUPS, moderateContent } from '../../../lib/openai'
-import { createBookAndStartImages } from '../../../lib/bookCreation'
+import { createBookRecord, generateBookContentSafely } from '../../../lib/bookCreation'
 import { createCheckoutSession } from '../../../lib/polar'
 import { checkSubscriptionCap } from '../../../lib/subscriptionCap'
 import { getOneTimeTier, FREE_TIER_MAX_PAGES, SAME_DAY_DISCOUNT, applyDiscount } from '../../../lib/pricingTiers'
+import { isAdminEmail } from '../../../lib/admin'
 
-// 텍스트는 동기 생성하고, 이미지는 Responses API의 background 모드로 전부 "시작"만 시킨 뒤
-// (완료는 웹훅/폴백폴링이 비동기로 처리) 응답한다. 텍스트 생성(추론 모델, 최대 ~58초 실측)
-// + 최대 51개(50페이지+표지) 이미지 작업 시작(각 ~2초, 청크 병렬)까지 감안해 넉넉히 잡음.
+// books 행만 만들고 즉시 응답한다. 텍스트 생성(추론 모델, 24~50p는 120초 초과 실측)과
+// 이미지 작업 시작은 waitUntil()로 응답 이후 백그라운드에서 계속 실행 — maxDuration은
+// 응답 시간이 아니라 이 백그라운드 작업까지 포함한 상한이므로 플랜 최대치로 잡는다.
 export const config = {
-  maxDuration: 120,
+  maxDuration: 300,
 }
 
 function wasUsedToday(timestamp) {
@@ -39,16 +41,31 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    // 2. 프로필 조회 — "만들기 클릭 시 즉시결제" 방식(2026-07-13 전환): 사전구매 크레딧 대신
-    //    구독 여부/무료체험 자격/1회 결제 필요 여부를 여기서 판단한다.
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('is_premium, free_trial_used_at, phone_verified')
-      .eq('id', user.id)
-      .single()
+    // 2. 관리자 계정 여부 — 결제/구독 게이팅 자체가 필요 없으므로 프로필 조회를 건너뛴다
+    //    (books.user_id는 auth.users만 참조하므로 profiles 행 없이도 생성 가능).
+    const isAdmin = isAdminEmail(user.email)
 
-    if (profileError || !profile) {
-      return res.status(400).json({ error: 'Profile not found' })
+    // 프로필 조회 — "만들기 클릭 시 즉시결제" 방식(2026-07-13 전환): 사전구매 크레딧 대신
+    // 구독 여부/무료체험 자격/1회 결제 필요 여부를 여기서 판단한다.
+    let profile = null
+    if (!isAdmin) {
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_premium, free_trial_used_at, phone_verified')
+        .eq('id', user.id)
+        .single()
+
+      // "행 없음"(PGRST116)과 그 외 쿼리 에러(컬럼 누락 등 마이그레이션 문제)를 구분해서
+      // 반환·로깅한다 — 둘을 같은 "Profile not found"로 뭉뚱그렸다가 라이브 DB의 컬럼 누락을
+      // 프로필 부재로 오진해 진단이 늦어진 적이 있음(2026-07-15).
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Profile query failed:', profileError)
+        return res.status(500).json({ error: '프로필 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' })
+      }
+      if (!data) {
+        return res.status(400).json({ error: 'Profile not found' })
+      }
+      profile = data
     }
 
     // 3. 요청 데이터 파싱 (사진은 선택사항 — characterPhotoUrl 존재 여부로 사진 기반 여부를 판단)
@@ -70,14 +87,18 @@ export default async function handler(req, res) {
 
     const bookParams = { userId: user.id, title, category, theme, ageGroup, characterNames, characterPhotoUrl, pageCount }
 
-    // 4. 구독자 — 월 30권+960페이지 이중 캡 내에서는 결제 없이 바로 생성
-    if (profile.is_premium) {
-      const capCheck = await checkSubscriptionCap(supabase, user.id)
-      if (capCheck.exceeded) {
-        return res.status(403).json({ error: capCheck.message })
+    // 4. 관리자 또는 구독자 — 결제 없이 바로 생성. 구독자는 월 30권+960페이지 이중 캡 적용,
+    //    관리자는 캡 없이 완전 무제한.
+    if (isAdmin || profile.is_premium) {
+      if (!isAdmin) {
+        const capCheck = await checkSubscriptionCap(supabase, user.id)
+        if (capCheck.exceeded) {
+          return res.status(403).json({ error: capCheck.message })
+        }
       }
 
-      const book = await createBookAndStartImages(supabase, openai, bookParams)
+      const book = await createBookRecord(supabase, bookParams)
+      waitUntil(generateBookContentSafely(supabase, openai, book, bookParams))
       return res.status(200).json({
         success: true,
         book: { id: book.id, title, category, status: 'generating' },
@@ -96,8 +117,12 @@ export default async function handler(req, res) {
         })
       }
 
-      const book = await createBookAndStartImages(supabase, openai, bookParams)
+      const book = await createBookRecord(supabase, bookParams)
       await supabase.from('profiles').update({ free_trial_used_at: new Date().toISOString() }).eq('id', user.id)
+      waitUntil(generateBookContentSafely(supabase, openai, book, bookParams, async () => {
+        // 생성이 실패했는데 무료체험만 소진되면 억울하므로 기회를 되돌려준다
+        await supabase.from('profiles').update({ free_trial_used_at: null }).eq('id', user.id)
+      }))
 
       return res.status(200).json({
         success: true,

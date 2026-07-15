@@ -1,6 +1,16 @@
 # AI 동화책 서비스 — 진행 상황 핸드오프
 
-> 마지막 업데이트: 2026-07-13 (Stage 02 완료 + 결제모델 전면개편 즉시결제 전환 + high화질 웹훅 아키텍처 + BGM→TTS, 프로덕션 배포 완료)
+> 마지막 업데이트: 2026-07-15 (Profile not found 원인 해결 + 관리자 계정 예외 + 텍스트 생성 비동기 전환으로 120초 타임아웃 해결 + gpt-5.6 검토, PR #1 머지·배포)
+
+## 2026-07-15 세션 — 운영자 테스트에서 발견된 문제들 연쇄 해결 (완료, PR #1로 머지)
+- **"Profile not found" 근본 원인**: 라이브 DB에 2026-07-13 마이그레이션 일부 누락 — `profiles`의 `phone_verified`/`free_trial_used_at`/`phone_number_hash` 컬럼과 `pending_book_orders`/`otp_verifications` 테이블이 없었음(HANDOFF 기록과 달리 실제 미적용). 존재하지 않는 컬럼 SELECT가 에러 → 코드가 "Profile not found"로 뭉뚱그려 반환해 오진을 유발. **사용자가 SQL Editor에서 누락분 직접 적용해 해결**. 재발 방지로 `/api/books/create`가 "행 없음"(PGRST116, 400)과 그 외 쿼리 에러(500 + console.error)를 구분하도록 수정.
+- **관리자 계정 예외**: `lib/admin.js`의 `isAdminEmail()` — 기본 `zshadowz@naver.com`, `ADMIN_EMAILS` env(콤마 구분)로 확장. 관리자는 `/api/books/create`에서 프로필 조회·구독 캡·무료체험 제한·1회 결제 전부 우회(디지털 생성만 — 실물책 주문은 실비 발생이라 제외, 사용자 확인됨).
+- **120초 타임아웃 해결(텍스트 생성 비동기 전환)**: 24~50p 스토리를 추론 모델로 동기 생성하던 구조가 `maxDuration=120`을 초과해 프로덕션 실패("Task timed out after 120 seconds", 클라이언트엔 Vercel 인프라의 일반 텍스트 에러가 `.json()` 파싱 실패로 표출). `createBookAndStartImages`를 `createBookRecord`(행 생성, 즉시 응답) + `generateBookContent`(무거운 후반부)로 분리하고, 후반부는 `@vercel/functions`의 `waitUntil`로 응답 이후 실행(`maxDuration` 300으로 상향). 실패 시 `generateBookContentSafely`가 books를 failed 처리 + 무료체험 반환/주문 실패사유 기록. 뷰어에 "이야기 쓰는 중" 단계 표시 추가. ⚠️ **Vercel Fluid Compute가 꺼져 있으면 waitUntil이 안 먹어 텍스트 단계에서 멈춤** — 그 증상이면 프로젝트 설정에서 활성화.
+- **토큰 상한 환경변수화**: 하드코딩 32000이 gpt-4o-mini 한도(16,384) 초과로 400 실패(프리뷰 실측) → `OPENAI_TEXT_MAX_COMPLETION_TOKENS`(기본 16000)로 전환. gpt-5.5/5.6은 128K까지 지원하므로 운영에선 32000 권장.
+- **이미지 작업 시작 재시도**: 프리뷰 실측에서 24p 중 17장 이미지 누락 — 시작 호출 1회 실패가 곧바로 영구 실패('')로 확정되던 구조. 429/5xx/네트워크 오류에 한해 2회 백오프(2s/4s) 재시도(`startImageJobWithRetry`) + 작업 행을 청크별 즉시 기록(low 화질 ~20초 완료 시 웹훅이 행보다 먼저 도착하는 경쟁 완화).
+- **⚠️ 프리뷰 배포는 production 환경변수가 적용 안 됨을 확인**: `OPENAI_TEXT_MODEL`/`OPENAI_IMAGE_QUALITY`가 production에만 있어 프리뷰는 gpt-4o-mini/low로 동작 → 품질 급락·사진 미반영으로 표출됐음(코드 회귀 아님). 프리뷰에서 품질 테스트하려면 Preview 환경에도 env를 넣어야 함.
+- **단위테스트 도입**: `scripts/test-bookCreation.mjs`(mock 기반, 외부 API 호출/비용 없음) — `npm run test:book`. 정상 경로·429 재시도·영구 실패 격리·텍스트 실패 안전망 등 11개 검증. esbuild devDependency 추가.
+- **gpt-5.6 검토(2026-07-09 GA)**: Sol($5/$30, `gpt-5.6`의 별칭)/Terra($2.50/$15, "5.5급 성능 절반 가격")/Luna($1/$6) 3티어, 모두 컨텍스트 1M·출력 128K. **Terra 권장** — 텍스트비 권당 ~₩720→~₩360으로 절반, 이미지 원가가 지배적이라 가격표 재산정 불필요. env만 교체: `OPENAI_TEXT_MODEL=gpt-5.6-terra`. `IMAGE_JOB_DRIVER_MODEL`(gpt-5.5 고정)은 그대로 둘 것.
 
 ## 2차 PRD Stage 02 — SweetBook 웹훅 해결 + Live 키 확보(활성화는 보류) (완료)
 - **SweetBook 웹훅 등록 버그 해결 확인**: 고객지원 문의 후 IIS 405 인프라 버그 해결됨. Sandbox `PUT /webhooks/config` 재호출로 정상 등록(200) 확인. 단 `secretKey`가 마스킹된 값(`whsk_2Uw...`)으로만 옴 — 이미 예전에 한 번 발급된 것으로 보이며 API로는 재발급 불가. **파트너 포털/고객지원에서 전체 시크릿 재발급 필요.** `.env.local`의 `SWEETBOOK_WEBHOOK_SECRET`은 마스킹된(작동 안 하는) 값을 채우지 않고 빈 값으로 유지 — 잘못 채우면 `verifySweetbookWebhookSignature()`가 항상 401을 내서 웹훅이 조용히 전부 실패하기 때문.
