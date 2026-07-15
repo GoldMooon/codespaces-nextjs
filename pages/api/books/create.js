@@ -4,6 +4,7 @@ import { createBookAndStartImages } from '../../../lib/bookCreation'
 import { createCheckoutSession } from '../../../lib/polar'
 import { checkSubscriptionCap } from '../../../lib/subscriptionCap'
 import { getOneTimeTier, FREE_TIER_MAX_PAGES, SAME_DAY_DISCOUNT, applyDiscount } from '../../../lib/pricingTiers'
+import { isAdminEmail } from '../../../lib/admin'
 
 // 텍스트는 동기 생성하고, 이미지는 Responses API의 background 모드로 전부 "시작"만 시킨 뒤
 // (완료는 웹훅/폴백폴링이 비동기로 처리) 응답한다. 텍스트 생성(추론 모델, 최대 ~58초 실측)
@@ -39,16 +40,24 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    // 2. 프로필 조회 — "만들기 클릭 시 즉시결제" 방식(2026-07-13 전환): 사전구매 크레딧 대신
-    //    구독 여부/무료체험 자격/1회 결제 필요 여부를 여기서 판단한다.
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('is_premium, free_trial_used_at, phone_verified')
-      .eq('id', user.id)
-      .single()
+    // 2. 관리자 계정 여부 — 결제/구독 게이팅 자체가 필요 없으므로 프로필 조회를 건너뛴다
+    //    (books.user_id는 auth.users만 참조하므로 profiles 행 없이도 생성 가능).
+    const isAdmin = isAdminEmail(user.email)
 
-    if (profileError || !profile) {
-      return res.status(400).json({ error: 'Profile not found' })
+    // 프로필 조회 — "만들기 클릭 시 즉시결제" 방식(2026-07-13 전환): 사전구매 크레딧 대신
+    // 구독 여부/무료체험 자격/1회 결제 필요 여부를 여기서 판단한다.
+    let profile = null
+    if (!isAdmin) {
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_premium, free_trial_used_at, phone_verified')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !data) {
+        return res.status(400).json({ error: 'Profile not found' })
+      }
+      profile = data
     }
 
     // 3. 요청 데이터 파싱 (사진은 선택사항 — characterPhotoUrl 존재 여부로 사진 기반 여부를 판단)
@@ -70,11 +79,14 @@ export default async function handler(req, res) {
 
     const bookParams = { userId: user.id, title, category, theme, ageGroup, characterNames, characterPhotoUrl, pageCount }
 
-    // 4. 구독자 — 월 30권+960페이지 이중 캡 내에서는 결제 없이 바로 생성
-    if (profile.is_premium) {
-      const capCheck = await checkSubscriptionCap(supabase, user.id)
-      if (capCheck.exceeded) {
-        return res.status(403).json({ error: capCheck.message })
+    // 4. 관리자 또는 구독자 — 결제 없이 바로 생성. 구독자는 월 30권+960페이지 이중 캡 적용,
+    //    관리자는 캡 없이 완전 무제한.
+    if (isAdmin || profile.is_premium) {
+      if (!isAdmin) {
+        const capCheck = await checkSubscriptionCap(supabase, user.id)
+        if (capCheck.exceeded) {
+          return res.status(403).json({ error: capCheck.message })
+        }
       }
 
       const book = await createBookAndStartImages(supabase, openai, bookParams)
