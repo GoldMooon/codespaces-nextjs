@@ -54,7 +54,14 @@ export default async function handler(req, res) {
         .eq('id', user.id)
         .single()
 
-      if (profileError || !data) {
+      // "행 없음"(PGRST116)과 그 외 쿼리 에러(컬럼 누락 등 마이그레이션 문제)를 구분해서
+      // 반환·로깅한다 — 둘을 같은 "Profile not found"로 뭉뚱그렸다가 라이브 DB의 컬럼 누락을
+      // 프로필 부재로 오진해 진단이 늦어진 적이 있음(2026-07-15).
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Profile query failed:', profileError)
+        return res.status(500).json({ error: '프로필 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' })
+      }
+      if (!data) {
         return res.status(400).json({ error: 'Profile not found' })
       }
       profile = data
