@@ -1,10 +1,13 @@
+import { waitUntil } from '@vercel/functions'
 import { createServerSupabase } from '../../../../lib/supabase'
 import { createOpenAI } from '../../../../lib/openai'
-import { createBookAndStartImages } from '../../../../lib/bookCreation'
+import { createBookRecord, generateBookContentSafely } from '../../../../lib/bookCreation'
 
-// 텍스트 생성(최대 ~58초 실측) + 이미지 작업 시작(최대 51개, 청크 병렬)까지 감안.
+// books 행만 만들고 즉시 응답한다. 텍스트 생성은 waitUntil()로 응답 이후 백그라운드에서
+// 계속 실행 — 24~50페이지를 추론 모델로 동기 생성하던 기존 방식은 120초 타임아웃으로
+// 실제 프로덕션에서 실패했음(2026-07-15). maxDuration은 백그라운드 작업까지 포함한 상한.
 export const config = {
-  maxDuration: 120,
+  maxDuration: 300,
 }
 
 export default async function handler(req, res) {
@@ -56,12 +59,22 @@ export default async function handler(req, res) {
     }
 
     const openai = createOpenAI()
-    const book = await createBookAndStartImages(supabase, openai, order.params)
+    const book = await createBookRecord(supabase, order.params)
 
     await supabase
       .from('pending_book_orders')
       .update({ status: 'created', book_id: book.id })
       .eq('id', bookOrderId)
+
+    waitUntil(generateBookContentSafely(supabase, openai, book, order.params, async (error) => {
+      // 결제는 이미 끝난 주문이므로 실패 사유를 남겨 CS/재시도 판단에 쓴다
+      // (status는 'failed'로 되돌리지 않음 — book_id가 이미 연결돼 있고, 뷰어의
+      // failed 화면이 사용자에게 실패를 안내한다)
+      await supabase
+        .from('pending_book_orders')
+        .update({ error_message: error.message })
+        .eq('id', bookOrderId)
+    }))
 
     return res.status(200).json({ status: 'created', bookId: book.id })
 

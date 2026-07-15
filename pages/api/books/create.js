@@ -1,16 +1,17 @@
+import { waitUntil } from '@vercel/functions'
 import { createServerSupabase } from '../../../lib/supabase'
 import { createOpenAI, AGE_GROUPS, moderateContent } from '../../../lib/openai'
-import { createBookAndStartImages } from '../../../lib/bookCreation'
+import { createBookRecord, generateBookContentSafely } from '../../../lib/bookCreation'
 import { createCheckoutSession } from '../../../lib/polar'
 import { checkSubscriptionCap } from '../../../lib/subscriptionCap'
 import { getOneTimeTier, FREE_TIER_MAX_PAGES, SAME_DAY_DISCOUNT, applyDiscount } from '../../../lib/pricingTiers'
 import { isAdminEmail } from '../../../lib/admin'
 
-// 텍스트는 동기 생성하고, 이미지는 Responses API의 background 모드로 전부 "시작"만 시킨 뒤
-// (완료는 웹훅/폴백폴링이 비동기로 처리) 응답한다. 텍스트 생성(추론 모델, 최대 ~58초 실측)
-// + 최대 51개(50페이지+표지) 이미지 작업 시작(각 ~2초, 청크 병렬)까지 감안해 넉넉히 잡음.
+// books 행만 만들고 즉시 응답한다. 텍스트 생성(추론 모델, 24~50p는 120초 초과 실측)과
+// 이미지 작업 시작은 waitUntil()로 응답 이후 백그라운드에서 계속 실행 — maxDuration은
+// 응답 시간이 아니라 이 백그라운드 작업까지 포함한 상한이므로 플랜 최대치로 잡는다.
 export const config = {
-  maxDuration: 120,
+  maxDuration: 300,
 }
 
 function wasUsedToday(timestamp) {
@@ -96,7 +97,8 @@ export default async function handler(req, res) {
         }
       }
 
-      const book = await createBookAndStartImages(supabase, openai, bookParams)
+      const book = await createBookRecord(supabase, bookParams)
+      waitUntil(generateBookContentSafely(supabase, openai, book, bookParams))
       return res.status(200).json({
         success: true,
         book: { id: book.id, title, category, status: 'generating' },
@@ -115,8 +117,12 @@ export default async function handler(req, res) {
         })
       }
 
-      const book = await createBookAndStartImages(supabase, openai, bookParams)
+      const book = await createBookRecord(supabase, bookParams)
       await supabase.from('profiles').update({ free_trial_used_at: new Date().toISOString() }).eq('id', user.id)
+      waitUntil(generateBookContentSafely(supabase, openai, book, bookParams, async () => {
+        // 생성이 실패했는데 무료체험만 소진되면 억울하므로 기회를 되돌려준다
+        await supabase.from('profiles').update({ free_trial_used_at: null }).eq('id', user.id)
+      }))
 
       return res.status(200).json({
         success: true,

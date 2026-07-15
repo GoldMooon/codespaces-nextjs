@@ -188,6 +188,9 @@ export default function BookPage() {
   }
 
   if (book.status === 'generating') {
+    // 텍스트 생성이 응답 후 백그라운드로 진행되므로, content가 채워지기 전까지는
+    // "이야기 쓰는 중" 단계다 — 그림 단계와 구분해 안내한다.
+    const storyReady = (book.content?.pages?.length || 0) > 0
     const pageCount = book.content?.pages?.length || book.page_count || 0
     return (
       <>
@@ -196,8 +199,12 @@ export default function BookPage() {
         </Head>
         <Header />
         <div className={styles.loading}>
-          <h2>🎨 그림을 그리고 있어요</h2>
-          <p>이야기는 완성됐어요! 이제 {pageCount > 0 ? `${pageCount}장의 ` : ''}그림을 그리는 중이에요.</p>
+          <h2>{storyReady ? '🎨 그림을 그리고 있어요' : '✍️ 이야기를 쓰고 있어요'}</h2>
+          <p>
+            {storyReady
+              ? `이야기는 완성됐어요! 이제 ${pageCount > 0 ? `${pageCount}장의 ` : ''}그림을 그리는 중이에요.`
+              : 'AI 작가가 열심히 이야기를 짓고 있어요. 이야기가 완성되면 이어서 그림을 그려요.'}
+          </p>
           <p style={{ color: '#888', fontSize: '0.9rem' }}>
             {pageCount >= 10
               ? '10페이지 이상은 그림 생성에 최소 5분 이상 소요될 수 있어요.'
@@ -234,8 +241,8 @@ export default function BookPage() {
         </Head>
         <Header />
         <div className={styles.error}>
-          <h2>😢 그림 생성에 실패했어요</h2>
-          <p>이야기는 저장되어 있어요. 다시 시도해 주세요.</p>
+          <h2>😢 동화책 생성에 실패했어요</h2>
+          <p>{book.content?.pages?.length ? '이야기는 저장되어 있어요. ' : ''}다시 시도해 주세요.</p>
           <Link href="/books">
             <button>내 동화책으로 돌아가기</button>
           </Link>
